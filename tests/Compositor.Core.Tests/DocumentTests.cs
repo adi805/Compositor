@@ -147,4 +147,63 @@ public class UndoHistoryTests
         Assert.Equal(3, doc.Layers.Count);
         Assert.Same(b, doc.Layers[1]); // b is back in the middle
     }
+
+    [Fact]
+    public void Record_DoesNotExecute_AndClearsRedo()
+    {
+        var surface = new RasterSurface(32, 32);
+        var before = (byte[])surface.Pixels.Clone();
+        BrushStroke.Apply(surface, new[] { (5f, 5f), (20f, 20f) }, 4f, 0, 255, 0, 255, 1f);
+        var cmd = new StrokeCommand(
+            surface, new[] { (5f, 5f), (20f, 20f) }, 4f, 0, 255, 0, 255, 1f,
+            before, alreadyApplied: true);
+
+        var stack = new UndoHistory();
+        stack.Push(new AddLayerCommand(new Document(32, 32), new Layer("X")));
+        stack.Undo();
+        Assert.True(stack.CanRedo);
+
+        var paintedAfterApply = CountPaintedPixels(surface);
+        Assert.True(paintedAfterApply > 0);
+
+        stack.Record(cmd); // stroke is already on the surface: must NOT execute
+
+        Assert.True(stack.CanUndo);
+        Assert.False(stack.CanRedo); // Record clears redo, same contract as Push
+        Assert.Equal(paintedAfterApply, CountPaintedPixels(surface)); // no second application
+    }
+
+    [Fact]
+    public void Record_RoundTrips()
+    {
+        var surface = new RasterSurface(32, 32);
+        var before = (byte[])surface.Pixels.Clone();
+        BrushStroke.Apply(surface, new[] { (5f, 5f), (20f, 20f) }, 4f, 0, 255, 0, 255, 1f);
+        var painted = (byte[])surface.Pixels.Clone();
+        var cmd = new StrokeCommand(
+            surface, new[] { (5f, 5f), (20f, 20f) }, 4f, 0, 255, 0, 255, 1f,
+            before, alreadyApplied: true);
+
+        var stack = new UndoHistory();
+        stack.Record(cmd);
+
+        stack.Undo();
+        Assert.Equal(before, surface.Pixels);
+        stack.Redo();
+        Assert.Equal(painted, surface.Pixels);
+    }
+
+    private static int CountPaintedPixels(RasterSurface surface)
+    {
+        var count = 0;
+        for (var i = 3; i < surface.Pixels.Length; i += 4)
+        {
+            if (surface.Pixels[i] > 0)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
 }

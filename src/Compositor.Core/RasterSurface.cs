@@ -10,6 +10,15 @@ public sealed class RasterSurface
     public int Height { get; }
     public byte[] Pixels { get; }
 
+    /// <summary>
+    /// Monotonic mutation counter. Editors use it to detect stale cached
+    /// previews of this surface without diffing pixel buffers.
+    /// </summary>
+    public long Version { get; private set; }
+
+    /// <summary>Call after any out-of-band mutation of <see cref="Pixels"/>.</summary>
+    public void MarkDirty() => Version++;
+
     public RasterSurface(int width, int height)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);

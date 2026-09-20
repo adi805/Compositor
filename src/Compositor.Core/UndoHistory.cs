@@ -21,6 +21,18 @@ public sealed class UndoHistory
         _redo.Clear();
     }
 
+    /// <summary>
+    /// Records a command whose effect is ALREADY applied to the document
+    /// (live-feedback brush strokes). Unlike <see cref="Push"/>, it must not
+    /// execute: re-applying an alpha-composited stroke would darken it.
+    /// </summary>
+    public void Record(IUndoCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        _undo.Push(command);
+        _redo.Clear();
+    }
+
     public void Undo()
     {
         if (!CanUndo) return;

@@ -25,6 +25,7 @@ public static class BrushStroke
 
         opacity = Math.Clamp(opacity, 0f, 1f);
         var spacing = MathF.Max(1f, radius * 0.5f);
+        surface.MarkDirty();
 
         for (var i = 0; i < path.Count; i++)
         {
