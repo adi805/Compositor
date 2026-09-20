@@ -143,4 +143,122 @@ public sealed class EditorViewModelTests
 
         Assert.False(doc.Layers[0].IsVisible);
     }
+
+    [Fact]
+    public void BeginStroke_MaterializesPixels_OnBlankActiveLayer()
+    {
+        var doc = new Document(100, 100);
+        doc.AddLayer(new Layer("bg"));
+        var vm = new EditorViewModel(doc);
+        var layer = vm.ActiveLayer!;
+        Assert.Null(layer.Pixels);
+
+        Assert.True(vm.BeginStroke(50, 50));
+
+        Assert.NotNull(layer.Pixels);
+        Assert.Equal(vm.Doc.Width, layer.Pixels!.Width);
+        Assert.True(vm.IsStrokeActive);
+    }
+
+    [Fact]
+    public void StrokeRoundTrip_UndoRestoresExactBytes_RedoRepaints()
+    {
+        var doc = new Document(100, 100);
+        doc.AddLayer(new Layer("bg"));
+        var vm = new EditorViewModel(doc);
+        var layer = vm.ActiveLayer!;
+        var before = new byte[100 * 100 * 4]; // blank surface starts all-zero
+
+        Assert.True(vm.BeginStroke(20, 20));
+        vm.ContinueStroke(80, 80);
+        var painted = (byte[])layer.Pixels!.Pixels.Clone();
+        Assert.NotEqual(before, painted);
+
+        Assert.True(vm.EndStroke());
+        Assert.True(vm.CanUndo);
+
+        vm.Undo();
+        Assert.Equal(before, layer.Pixels!.Pixels);
+
+        vm.Redo();
+        Assert.Equal(painted, layer.Pixels!.Pixels);
+    }
+
+    [Fact]
+    public void SinglePointStroke_ClickDot_UndoRedoRoundTrips()
+    {
+        var doc = new Document(100, 100);
+        doc.AddLayer(new Layer("bg"));
+        var vm = new EditorViewModel(doc);
+        var layer = vm.ActiveLayer!;
+
+        Assert.True(vm.BeginStroke(50, 50));
+        Assert.True(vm.EndStroke());
+
+        var painted = (byte[])layer.Pixels!.Pixels.Clone();
+        Assert.Contains(painted, b => b > 0); // dot landed
+
+        vm.Undo();
+        Assert.All(layer.Pixels!.Pixels, b => Assert.Equal(0, b));
+        vm.Redo();
+        Assert.Equal(painted, layer.Pixels!.Pixels);
+    }
+
+    [Fact]
+    public void BeginStroke_OnLockedLayer_IsNoOp()
+    {
+        var doc = new Document(100, 100);
+        doc.AddLayer(new Layer("locked") { IsLocked = true });
+        var vm = new EditorViewModel(doc);
+        vm.Selected = vm.Rows[0]; // active = locked layer
+
+        Assert.False(vm.BeginStroke(50, 50));
+        Assert.Null(vm.ActiveLayer!.Pixels);
+        Assert.False(vm.IsStrokeActive);
+        Assert.False(vm.CanUndo);
+    }
+
+    [Fact]
+    public void BeginStroke_WithoutActiveLayer_IsNoOp()
+    {
+        var doc = new Document(100, 100); // no layers at all
+        var vm = new EditorViewModel(doc);
+
+        Assert.False(vm.BeginStroke(50, 50));
+        Assert.False(vm.IsStrokeActive);
+    }
+
+    [Fact]
+    public void EndStroke_RaisesDocumentChanged_AndFlipsCanUndo()
+    {
+        var doc = new Document(100, 100);
+        doc.AddLayer(new Layer("bg"));
+        var vm = new EditorViewModel(doc);
+        var changes = new List<string>();
+        vm.DocumentChanged += () => changes.Add("changed");
+        Assert.False(vm.CanUndo);
+
+        vm.BeginStroke(50, 50);
+        Assert.True(vm.EndStroke());
+
+        Assert.NotEmpty(changes);
+        Assert.True(vm.CanUndo);
+        Assert.False(vm.CanRedo);
+        Assert.False(vm.IsStrokeActive);
+
+        vm.Undo();
+        Assert.True(vm.CanRedo);
+    }
+
+    [Fact]
+    public void SetBrushColor_UpdatesChannels()
+    {
+        var vm = new EditorViewModel(new Document(100, 100));
+
+        vm.SetBrushColor(219, 68, 55);
+
+        Assert.Equal((byte)219, vm.BrushR);
+        Assert.Equal((byte)68, vm.BrushG);
+        Assert.Equal((byte)55, vm.BrushB);
+    }
 }

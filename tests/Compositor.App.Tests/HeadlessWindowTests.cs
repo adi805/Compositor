@@ -1,6 +1,11 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
+using System.Linq;
 using Xunit;
 
 namespace Compositor.App.Tests;
@@ -74,5 +79,52 @@ public sealed class HeadlessWindowTests
         var button = window.FindControl<Button>(buttonName)
             ?? throw new InvalidOperationException($"Button '{buttonName}' not found.");
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    }
+
+    [AvaloniaFact]
+    public void CanvasDrag_PaintsActiveLayer_AndUndoClearsIt()
+    {
+        var doc = new Compositor.Core.Document(400, 300);
+        doc.AddLayer(new Compositor.Core.Layer("bg"));
+        var window = new MainWindow(new EditorViewModel(doc));
+        window.Show();
+
+        var canvas = window.FindControl<CanvasView>("EditorCanvas")!;
+        var vm = window.Editor!;
+
+        // Window-space points inside the canvas area (left column, away from panels).
+        // Headless conveys pressed-button state via modifiers, not just the down event.
+        window.MouseDown(new Point(300, 300), MouseButton.Left, RawInputModifiers.LeftMouseButton);
+        window.MouseMove(new Point(400, 320), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(new Point(400, 320), MouseButton.Left, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(vm.IsStrokeActive);
+        var pixels = vm.ActiveLayer!.Pixels!;
+        var painted = pixels.Pixels.Count(b => b > 0);
+        Assert.True(painted > 0, "drag should leave painted pixels");
+
+        vm.Undo();
+        Assert.All(pixels.Pixels, b => Assert.Equal(0, b));
+    }
+
+    [AvaloniaFact]
+    public void UndoRedoButtons_RoundTripStroke()
+    {
+        var doc = new Compositor.Core.Document(400, 300);
+        doc.AddLayer(new Compositor.Core.Layer("bg"));
+        var window = new MainWindow(new EditorViewModel(doc));
+        window.Show();
+        var vm = window.Editor!;
+
+        vm.BeginStroke(100, 100);
+        vm.EndStroke();
+
+        Click(window, "UndoButton");
+        Assert.All(vm.ActiveLayer!.Pixels!.Pixels, b => Assert.Equal(0, b));
+        Assert.True(vm.CanRedo);
+
+        Click(window, "RedoButton");
+        Assert.Contains(vm.ActiveLayer!.Pixels!.Pixels, b => b > 0);
     }
 }

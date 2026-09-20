@@ -112,3 +112,12 @@ Acceptance:
 - **PNG codec**: minimal 8-bit RGBA encoder/decoder (CRC-checked) in `Compositor.Core.Imaging`; `.comp` files now embed `images/<uuid>.png` for painted layers, round-trip pixel-exact (test-enforced).
 - **Test count**: 39 Core + 13 App (4 headless UI) = 52, all green locally and in CI (`eb134a2`).
 - Next up (unchanged): brush UI wiring in the canvas, file dialogs, zoom/pan, PNG/JPEG/WebP import via SkiaSharp.
+
+## Status update (2026-09-20, task 6): brush wired to canvas
+
+- **Live painting works end-to-end**: pointer drag on the canvas paints the ACTIVE layer in document coordinates; blank layers materialize a full-doc `RasterSurface` on first stroke; locked layers and empty stacks are no-ops.
+- **Stroke-granularity undo**: editor live-paints each segment for feedback, then files ONE `StrokeCommand` per stroke via new `UndoHistory.Record` (record-without-execute; re-applying an alpha stroke would double-darken it). Click-dots stamp on `EndStroke`. `Ctrl+Z` / `Ctrl+Y` + toolbar buttons round-trip exact pixels.
+- **Canvas renders real pixels**: per-layer cached `WriteableBitmap` (Rgba8888 + Unpremul, zero-copy `Marshal.Copy`), refreshed only when `RasterSurface.Version` moves; blank layers keep placeholder tints.
+- **Hit testing**: `CanvasView` implements `ICustomHitTest` (Avalonia.Rendering); a plain Control with no DrawList is otherwise invisible to the hit tester (verified against Avalonia 11.2.7 `CompositionDrawListVisual.HitTest`).
+- **Test count**: 47 Core + 22 App (6 headless UI) = 69, all green locally. Headless drag test proves hit-test + coordinate mapping + paint + undo end-to-end.
+- Next up: file dialogs (open/save), zoom/pan, PNG/JPEG/WebP import via SkiaSharp.

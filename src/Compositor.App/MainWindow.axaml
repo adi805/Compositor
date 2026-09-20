@@ -4,30 +4,53 @@
         x:Class="Compositor.App.MainWindow"
         Title="{Binding Title}"
         Width="1280" Height="800">
-  <Grid ColumnDefinitions="*,300">
-    <local:CanvasView Grid.Column="0" ViewModel="{Binding}" />
-    <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="8">
-      <TextBlock Grid.Row="0" Text="Layers" FontWeight="Bold" Margin="0,0,0,8" />
-      <ListBox Grid.Row="1" x:Name="LayerList"
-               ItemsSource="{Binding Rows}"
-               SelectedItem="{Binding Selected}">
-        <ListBox.ItemTemplate>
-          <DataTemplate>
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
-              <CheckBox Grid.Column="1"
-                        IsChecked="{Binding IsVisible}"
-                        ToolTip.Tip="Visibility" />
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-      <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0" Spacing="8">
-        <Button x:Name="AddLayerButton" Content="Add" Click="OnAddLayer" />
-        <Button x:Name="DeleteLayerButton" Content="Delete" Click="OnDeleteLayer" />
-        <Button x:Name="MoveUpButton" Content="Up" Click="OnMoveUp" />
-        <Button x:Name="MoveDownButton" Content="Down" Click="OnMoveDown" />
-      </StackPanel>
+  <Grid RowDefinitions="Auto,*">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="8,8,8,4">
+      <TextBlock Text="Brush" FontWeight="Bold" VerticalAlignment="Center" />
+      <Slider x:Name="BrushSize" Minimum="1" Maximum="128"
+              Value="{Binding BrushRadius}" Width="120"
+              VerticalAlignment="Center" ToolTip.Tip="Brush radius (px)" />
+      <TextBlock Text="{Binding BrushRadius, StringFormat='{}{0:0} px'}"
+                 VerticalAlignment="Center" MinWidth="50" />
+      <Button x:Name="BrushBlack" Background="#141414" Width="22" Height="22"
+              Click="OnBrushColor" Tag="20,20,20" ToolTip.Tip="Black" />
+      <Button x:Name="BrushWhite" Background="#FAFAFA" Width="22" Height="22"
+              Click="OnBrushColor" Tag="250,250,250" ToolTip.Tip="White" />
+      <Button x:Name="BrushRed" Background="#DB4437" Width="22" Height="22"
+              Click="OnBrushColor" Tag="219,68,55" ToolTip.Tip="Red" />
+      <Button x:Name="BrushGreen" Background="#0F9D58" Width="22" Height="22"
+              Click="OnBrushColor" Tag="15,157,88" ToolTip.Tip="Green" />
+      <Button x:Name="BrushBlue" Background="#4285F4" Width="22" Height="22"
+              Click="OnBrushColor" Tag="66,133,244" ToolTip.Tip="Blue" />
+      <Separator Width="8" />
+      <Button x:Name="UndoButton" Content="Undo" Click="OnUndo" ToolTip.Tip="Ctrl+Z" />
+      <Button x:Name="RedoButton" Content="Redo" Click="OnRedo" ToolTip.Tip="Ctrl+Y" />
+    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="*,300">
+      <local:CanvasView x:Name="EditorCanvas" Grid.Column="0" ViewModel="{Binding}" />
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="8">
+        <TextBlock Grid.Row="0" Text="Layers" FontWeight="Bold" Margin="0,0,0,8" />
+        <ListBox Grid.Row="1" x:Name="LayerList"
+                 ItemsSource="{Binding Rows}"
+                 SelectedItem="{Binding Selected}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
+                <CheckBox Grid.Column="1"
+                          IsChecked="{Binding IsVisible}"
+                          ToolTip.Tip="Visibility" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0" Spacing="8">
+          <Button x:Name="AddLayerButton" Content="Add" Click="OnAddLayer" />
+          <Button x:Name="DeleteLayerButton" Content="Delete" Click="OnDeleteLayer" />
+          <Button x:Name="MoveUpButton" Content="Up" Click="OnMoveUp" />
+          <Button x:Name="MoveDownButton" Content="Down" Click="OnMoveDown" />
+        </StackPanel>
+      </Grid>
     </Grid>
   </Grid>
 </Window>

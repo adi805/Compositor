@@ -27,9 +27,9 @@ Goal: same document model, same editing semantics, compatible file format. Not a
 - **Project files**: single-file zip `.comp` (`manifest.json` + `images/<uuid>.png`), atomic replace, full validation (30k px/side, 100 M px, 10k layers, 4 MiB manifest, unsafe-entry rejection). Byte-identical round-trip is test-enforced.
 - **Raster engine**: RGBA8 surfaces, soft round brush (spacing + stroke-opacity cap, per upstream `brush-performance.md`), undo/redo with exact pixel restoration.
 - **UI shell (Avalonia)**: editor window with canvas (checkerboard + layer rects) and layers panel (add, delete, reorder, visibility, selection).
-- **CI**: GitHub Actions on every push; 52 tests.
+- **CI**: GitHub Actions on every push; 69 tests.
 
-Not usable as a daily editor yet: brush UI wiring, file dialogs, zoom/pan, and painting tools are next. See `docs/ROADMAP.md`.
+Not usable as a daily editor yet: file dialogs, zoom/pan, and painting-tool polish are next. See `docs/ROADMAP.md`.
 
 ## Building and running
 
