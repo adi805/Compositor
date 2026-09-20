@@ -16,6 +16,7 @@ public sealed class UndoHistory
     public void Push(IUndoCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
+        command.Redo(); // execute-on-push: the action is applied as it is recorded
         _undo.Push(command);
         _redo.Clear();
     }
