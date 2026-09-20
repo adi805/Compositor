@@ -6,9 +6,16 @@ namespace Compositor.Core;
 /// </summary>
 public sealed class Document
 {
+    /// <summary>Stable identity used by project files (.comp manifest).</summary>
+    public Guid Id { get; } = Guid.NewGuid();
+
     public string Name { get; set; } = "Untitled";
     public int Width { get; }
     public int Height { get; }
+
+    /// <summary>Active layer, serialized as activeLayerUUID. Null is valid.</summary>
+    public Guid? ActiveLayerId { get; set; }
+
     public List<Layer> Layers { get; } = new();
 
     public Document(int width, int height)

@@ -12,13 +12,13 @@ public enum BlendMode
     Overlay,
     Darken,
     Lighten,
+    Difference,
     ColorDodge,
     ColorBurn,
-    SoftLight,
 }
 
 public static class BlendModeExtensions
 {
     public static bool IsValid(this BlendMode mode) =>
-        mode is >= BlendMode.Normal and <= BlendMode.SoftLight;
+        mode is >= BlendMode.Normal and <= BlendMode.ColorBurn;
 }
