@@ -1,0 +1,100 @@
+# Compositor for Windows - Roadmap
+
+Phased plan. Each phase has explicit acceptance criteria; no phase is "done" until its tests pass.
+
+## Phase 0 - Scaffold (current)
+
+Goal: solution builds, test project runs green, repository layout established.
+
+Deliverables:
+- `Compositor.Windows.sln` with Core, Kernels, App, and Core.Tests projects
+- `Directory.Build.props` for shared build settings
+- README with upstream attribution and tech stack
+- CI skeleton (GitHub Actions, linux runner, `dotnet build` + `dotnet test`)
+
+Acceptance:
+- `dotnet build Compositor.Windows.sln` exits 0
+- `dotnet test tests/Compositor.Core.Tests` exits 0 with at least one passing test
+
+## Phase 1 - Document model
+
+Goal: headless representation of a Compositor document that can round-trip `.comp` files.
+
+Deliverables (in `src/Compositor.Core`):
+- `Document`, `Layer`, `LayerGroup` (raster, text, shape placeholder)
+- Blend modes (normal, multiply, screen, overlay, etc.)
+- Opacity, visibility, clipping masks
+- Undo/redo stack (command pattern)
+- Project save/load (zip-based, following upstream `docs/project-format.md` v6 spec)
+
+Acceptance:
+- Create document, add layers, save to stream, reload, assert equivalent (round-trip test)
+- Undo a layer add, redo it, assert final state matches
+- Blend mode enum covers the 9 modes upstream supports
+
+## Phase 2 - Pixel engine
+
+Goal: actual raster operations backing layers.
+
+Deliverables (in `src/Compositor.Kernels` + `Core`):
+- Sparse tile-based raster surface (matches upstream model)
+- C pixel kernels: per-pixel operations, blend composition, color adjust
+- P/Invoke bindings + .NET fallback (pure C#) for portability when native build unavailable
+- Gaussian blur, levels, curves (via SkiaSharp where possible, custom kernels where not)
+
+Acceptance:
+- Blend two layers with each mode, assert against reference output
+- Round-trip a document with raster data and verify pixel integrity
+
+## Phase 3 - UI shell
+
+Goal: usable editor window on Windows.
+
+Deliverables (in `src/Compositor.App`):
+- Avalonia window: menu bar, canvas viewport with zoom/pan, layers panel, tool strip
+- Open/save `.comp`, import PNG/JPEG/WebP (via SkiaSharp), export flattened image
+- Move tool, marquee selection, brush paint (basic round brush with hardness)
+- Undo/redo wired to UI
+
+Acceptance:
+- App launches, opens a `.comp` file, renders layers correctly
+- Paint stroke appears on canvas, undo removes it
+- Save/reload produces visually identical result
+
+## Phase 4 - Advanced tools
+
+Deliverables:
+- Selections: rectangle, ellipse, lasso, magic wand (flood fill based)
+- Text layers
+- Adjustment layers (levels, curves, hue/saturation)
+- Liquify family: warp, push, twirl
+- Content-aware fill placeholder (ONNX model optional)
+
+Acceptance:
+- Each tool has at least one integration test driving it through the document model
+- Manual smoke checklist documented in `docs/port-notes.md`
+
+## Phase 5 - Distribution
+
+Deliverables:
+- Self-contained single-file Windows build (x64)
+- Installer (Inno Setup or MSI)
+- GitHub Actions release workflow producing artifacts on tag push
+- Optional: auto-update via GitHub Releases (upstream uses Sparkle on Mac)
+
+Acceptance:
+- Clean Windows 11 VM runs the installer and launches the app
+- Release workflow produces a downloadable `.zip` and installer on tag push
+
+## Non-goals (for this port)
+
+- macOS build (upstream already covers it)
+- Mobile/touch UI
+- Cloud sync / collaboration
+- Plugin API (out of scope until core is stable)
+
+## Risks
+
+- Native C kernels on Windows require a C compiler in CI (clang/gcc cross-target or MSVC); fallback to pure C# keeps phase 2-4 unblocked even without native toolchain
+- SkiaSharp rendering fidelity may differ subtly from CoreImage (color management, tone mapping); document any deviation in `docs/port-notes.md`
+- ONNX models for content-aware fill are large; make them optional download at runtime

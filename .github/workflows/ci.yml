@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore Compositor.Windows.sln
+      - name: Build
+        run: dotnet build Compositor.Windows.sln --no-restore -c Release
+      - name: Test
+        run: dotnet test tests/Compositor.Core.Tests --no-build -c Release
+      - name: Smoke (App entry point)
+        run: dotnet run --project src/Compositor.App -c Release --no-build
