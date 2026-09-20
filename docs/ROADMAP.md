@@ -105,3 +105,10 @@ Acceptance:
 - **Phase 1 done**: document model aligned to upstream 9-mode blend set, UUIDs, transform block; `ProjectStore` zip `.comp` (format v1 = upstream v6 subset, see `docs/RESEARCH.md`); 16 tests incl. byte-identical round-trip and 12 rejection cases (81c910c, fa6229a, 165c3e9).
 - **UI shell increment**: Avalonia 11.2 Fluent dark window, canvas checkerboard + layer rects, layers panel (add/delete/up/down/visibility/selection), 4 headless UI tests + 9 view-model tests. Remaining for full Phase 3: file dialogs (open/save wiring exists in `ProjectStore`), zoom/pan, menu bar, tools.
 - Deferred to pixel-engine phase: PNG asset encode/decode in `.comp` (layers are blank until raster lands; manifest already reserves `image`).
+
+## Status update (2026-09-20, task 5)
+
+- **Raster engine increment live**: `RasterSurface` now carries RGBA8 pixels; soft round brush with stroke-opacity cap (per upstream `brush-performance.md`); `PaintCommand` gives exact-pixel undo/redo.
+- **PNG codec**: minimal 8-bit RGBA encoder/decoder (CRC-checked) in `Compositor.Core.Imaging`; `.comp` files now embed `images/<uuid>.png` for painted layers, round-trip pixel-exact (test-enforced).
+- **Test count**: 39 Core + 13 App (4 headless UI) = 52, all green locally and in CI (`eb134a2`).
+- Next up (unchanged): brush UI wiring in the canvas, file dialogs, zoom/pan, PNG/JPEG/WebP import via SkiaSharp.
