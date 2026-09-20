@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Compositor.Core.Imaging;
 using System.Text.Json;
 
 namespace Compositor.Core.Project;
@@ -46,8 +47,23 @@ public static class ProjectStore
             using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
             {
                 var entry = zip.CreateEntry("manifest.json", CompressionLevel.NoCompression);
-                using var writer = entry.Open();
-                writer.Write(manifestBytes);
+                using (var writer = entry.Open())
+                {
+                    writer.Write(manifestBytes);
+                }
+
+                foreach (var layer in doc.Layers)
+                {
+                    if (layer.Pixels is null)
+                    {
+                        continue;
+                    }
+
+                    var png = new MemoryStream();
+                    Png.Encode(png, layer.Pixels.Width, layer.Pixels.Height, layer.Pixels.Pixels);
+                    var imageEntry = zip.CreateEntry($"images/{layer.Id}.png");
+                    imageEntry.Open().Write(png.ToArray());
+                }
             }
 
             File.Move(tempPath, path, overwrite: true);
@@ -201,6 +217,7 @@ public static class ProjectStore
                 FlipH = l.Transform.FlipH,
                 FlipV = l.Transform.FlipV,
             },
+            Image = l.Pixels is null ? null : $"images/{l.Id}.png",
         }).ToList(),
     };
 
@@ -302,6 +319,14 @@ public static class ProjectStore
         foreach (var layer in manifest.Layers)
         {
             var id = layerIdByUuid[layer.Uuid];
+            RasterSurface? pixels = null;
+            if (layer.Image is { } imageName)
+            {
+                using var entry = zip.GetEntry(imageName)!.Open();
+                var (w, h, rgba) = Png.Decode(entry);
+                pixels = new RasterSurface(w, h, rgba);
+            }
+
             doc.AddLayer(new Layer(layer.Name, id)
             {
                 IsVisible = layer.IsVisible,
@@ -316,9 +341,7 @@ public static class ProjectStore
                     layer.Transform.RotationDegrees,
                     layer.Transform.FlipH,
                     layer.Transform.FlipV),
-                // Pixel data arrives with the raster engine; this build's layers
-                // are blank and carry no image asset either way.
-                Pixels = null,
+                Pixels = pixels,
             });
         }
 
