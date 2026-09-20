@@ -18,12 +18,13 @@ public sealed class Document
 
     public List<Layer> Layers { get; } = new();
 
-    public Document(int width, int height)
+    public Document(int width, int height, Guid? id = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         Width = width;
         Height = height;
+        Id = id ?? Guid.NewGuid();
     }
 
     public void AddLayer(Layer layer)

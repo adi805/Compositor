@@ -7,9 +7,10 @@ namespace Compositor.Core;
 public sealed class Layer
 {
     /// <summary>Stable identity used by project files (.comp manifest).</summary>
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; private set; } = Guid.NewGuid();
 
     public string Name { get; set; } = "Layer";
+
     public bool IsVisible { get; set; } = true;
     public double Opacity { get; set; } = 1.0;
     public BlendMode Blend { get; set; } = BlendMode.Normal;
@@ -25,8 +26,9 @@ public sealed class Layer
 
     public Layer() { }
 
-    public Layer(string name)
+    public Layer(string name, Guid? id = null)
     {
         Name = string.IsNullOrWhiteSpace(name) ? "Layer" : name.Trim();
+        Id = id ?? Guid.NewGuid();
     }
 }
