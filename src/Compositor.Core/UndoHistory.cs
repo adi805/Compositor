@@ -5,7 +5,7 @@ namespace Compositor.Core;
 /// Every document change in the app goes through here so Ctrl+Z/Ctrl+Y is
 /// consistent across tools.
 /// </summary>
-public sealed class UndoStack
+public sealed class UndoHistory
 {
     private readonly Stack<IUndoCommand> _undo = new();
     private readonly Stack<IUndoCommand> _redo = new();

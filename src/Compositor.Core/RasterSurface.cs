@@ -13,8 +13,8 @@ public sealed class RasterSurface
 
     public RasterSurface(int width, int height)
     {
-        if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
-        if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         Width = width;
         Height = height;
     }

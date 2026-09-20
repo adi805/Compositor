@@ -90,12 +90,12 @@ public class LayerTests
     }
 }
 
-public class UndoStackTests
+public class UndoHistoryTests
 {
     [Fact]
     public void EmptyStack_CannotUndoOrRedo()
     {
-        var stack = new UndoStack();
+        var stack = new UndoHistory();
         Assert.False(stack.CanUndo);
         Assert.False(stack.CanRedo);
         stack.Undo(); // no-op, must not throw
@@ -105,7 +105,7 @@ public class UndoStackTests
     [Fact]
     public void Push_ClearsRedo()
     {
-        var stack = new UndoStack();
+        var stack = new UndoHistory();
         var doc = new Document(100, 100);
         stack.Push(new AddLayerCommand(doc, new Layer("A")));
         stack.Undo();
@@ -119,7 +119,7 @@ public class UndoStackTests
     {
         var doc = new Document(100, 100);
         var layer = new Layer("Test");
-        var stack = new UndoStack();
+        var stack = new UndoHistory();
         stack.Push(new AddLayerCommand(doc, layer));
 
         stack.Undo();
@@ -140,7 +140,7 @@ public class UndoStackTests
         doc.AddLayer(b);
         doc.AddLayer(c);
 
-        var stack = new UndoStack();
+        var stack = new UndoHistory();
         stack.Push(new RemoveLayerCommand(doc, b));
         stack.Undo();
 
