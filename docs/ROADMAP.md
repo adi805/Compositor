@@ -98,3 +98,10 @@ Acceptance:
 - Native C kernels on Windows require a C compiler in CI (clang/gcc cross-target or MSVC); fallback to pure C# keeps phase 2-4 unblocked even without native toolchain
 - SkiaSharp rendering fidelity may differ subtly from CoreImage (color management, tone mapping); document any deviation in `docs/port-notes.md`
 - ONNX models for content-aware fill are large; make them optional download at runtime
+
+## Status (2026-09-20)
+
+- **Phase 0 done**: solution + CI + smoke entry (headless console mode; `--ui` launches Avalonia).
+- **Phase 1 done**: document model aligned to upstream 9-mode blend set, UUIDs, transform block; `ProjectStore` zip `.comp` (format v1 = upstream v6 subset, see `docs/RESEARCH.md`); 16 tests incl. byte-identical round-trip and 12 rejection cases (81c910c, fa6229a, 165c3e9).
+- **UI shell increment**: Avalonia 11.2 Fluent dark window, canvas checkerboard + layer rects, layers panel (add/delete/up/down/visibility/selection), 4 headless UI tests + 9 view-model tests. Remaining for full Phase 3: file dialogs (open/save wiring exists in `ProjectStore`), zoom/pan, menu bar, tools.
+- Deferred to pixel-engine phase: PNG asset encode/decode in `.comp` (layers are blank until raster lands; manifest already reserves `image`).

@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Compositor.App"
+        x:Class="Compositor.App.MainWindow"
+        Title="{Binding Title}"
+        Width="1280" Height="800">
+  <Grid ColumnDefinitions="*,300">
+    <local:CanvasView Grid.Column="0" ViewModel="{Binding}" />
+    <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="8">
+      <TextBlock Grid.Row="0" Text="Layers" FontWeight="Bold" Margin="0,0,0,8" />
+      <ListBox Grid.Row="1" x:Name="LayerList"
+               ItemsSource="{Binding Rows}"
+               SelectedItem="{Binding Selected}">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
+              <CheckBox Grid.Column="1"
+                        IsChecked="{Binding IsVisible}"
+                        ToolTip.Tip="Visibility" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0" Spacing="8">
+        <Button x:Name="AddLayerButton" Content="Add" Click="OnAddLayer" />
+        <Button x:Name="DeleteLayerButton" Content="Delete" Click="OnDeleteLayer" />
+        <Button x:Name="MoveUpButton" Content="Up" Click="OnMoveUp" />
+        <Button x:Name="MoveDownButton" Content="Down" Click="OnMoveDown" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

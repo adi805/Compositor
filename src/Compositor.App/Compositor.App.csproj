@@ -2,7 +2,14 @@
   <PropertyGroup>
     <RootNamespace>Compositor.App</RootNamespace>
     <OutputType>Exe</OutputType>
+    <!-- Reflection bindings keep the hand-rolled VM simple; revisit with compiled bindings later -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.7" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.7" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.7" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Compositor.Core\Compositor.Core.csproj" />
   </ItemGroup>
