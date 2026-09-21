@@ -69,11 +69,21 @@
       </ComboBox>
       <Separator Width="8" />
       <TextBlock Text="Brush" FontWeight="Bold" VerticalAlignment="Center" />
-      <Slider x:Name="BrushSize" Minimum="1" Maximum="128"
-              Value="{Binding BrushRadius}" Width="120"
-              VerticalAlignment="Center" ToolTip.Tip="Brush radius (px)" />
-      <TextBlock Text="{Binding BrushRadius, StringFormat='{}{0:0} px'}"
+      <Slider x:Name="BrushSize" Minimum="1" Maximum="512"
+              Value="{Binding BrushDiameter}" Width="120"
+              VerticalAlignment="Center" ToolTip.Tip="Brush diameter (px)" />
+      <TextBlock Text="{Binding BrushDiameter, StringFormat='{}{0:0} px'}"
                  VerticalAlignment="Center" MinWidth="50" />
+      <TextBlock Text="Hardness" VerticalAlignment="Center" FontSize="11" Opacity="0.7" />
+      <Slider x:Name="BrushHardnessSlider" Minimum="0" Maximum="1"
+              Value="{Binding BrushHardness}" Width="80"
+              VerticalAlignment="Center" ToolTip.Tip="Hardness (0 = soft, 1 = hard)" />
+      <TextBlock Text="Flow" VerticalAlignment="Center" FontSize="11" Opacity="0.7" />
+      <Slider x:Name="BrushOpacitySlider" Minimum="0" Maximum="1"
+              Value="{Binding BrushOpacity}" Width="80"
+              VerticalAlignment="Center" ToolTip.Tip="Stroke opacity cap" />
+      <ToggleButton x:Name="EraserToggle" Content="Erase"
+                    IsChecked="{Binding IsErasing}" ToolTip.Tip="Eraser mode" />
       <Button x:Name="BrushBlack" Background="#141414" Width="22" Height="22"
               Click="OnBrushColor" Tag="20,20,20" ToolTip.Tip="Black" />
       <Button x:Name="BrushWhite" Background="#FAFAFA" Width="22" Height="22"

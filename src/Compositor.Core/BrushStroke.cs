@@ -1,55 +1,68 @@
+using Compositor.Core.Selection;
+
 namespace Compositor.Core;
 
 /// <summary>
-/// Round soft brush: stamps a filled disc with linear edge falloff along the
-/// pointer path, composited source-over into a straight-alpha surface.
-/// Stroke opacity caps coverage; repeated stamps along overlapping segments
-/// saturate the same way a physical stroke does.
+/// Brush stroke entry points. The canonical path runs through
+/// <see cref="StrokeCoverage"/> (upstream BrushStroke.swift): evenly spaced
+/// tip stamps accumulate into a coverage mask (screen for soft, max for hard)
+/// and paint through the stroke color at the stroke's opacity cap, so
+/// overlapping dabs never darken beyond it.
 /// </summary>
 public static class BrushStroke
 {
-    /// <summary>Applies a stroke; mutates the surface in place. An optional
-    /// selection clip constrains the stroke (upstream: brush edits respect
-    /// the active selection, soft edges blend partially).</summary>
+    /// <summary>
+    /// Applies a stroke; mutates the surface in place. An optional selection
+    /// clip constrains the stroke (upstream: brush edits respect the active
+    /// selection, soft edges blend partially). Deterministic: coverage
+    /// accumulation is order-independent, so live feedback, deferred redo and
+    /// this path all produce identical pixels.
+    /// </summary>
+    public static void Apply(
+        RasterSurface surface,
+        IReadOnlyList<(float X, float Y)> path,
+        BrushSettings settings,
+        SelectionClip? selection = null)
+    {
+        ArgumentNullException.ThrowIfNull(surface);
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Count == 0)
+        {
+            return;
+        }
+
+        var before = (byte[])surface.Pixels.Clone();
+        var stroke = new StrokeCoverage(surface.Width, surface.Height, settings, selection);
+        foreach (var point in path)
+        {
+            stroke.WalkTo(point.X, point.Y);
+        }
+        stroke.PaintRegion(surface, before);
+    }
+
+    /// <summary>Hard-round-brush adapter over <see cref="Apply"/> for callers
+    /// that still express the brush as radius + color + opacity.</summary>
     public static void Apply(
         RasterSurface surface,
         IReadOnlyList<(float X, float Y)> path,
         float radius,
         byte r, byte g, byte b, byte a,
         float opacity,
-        Selection.SelectionClip? selection = null)
+        SelectionClip? selection = null)
     {
-        ArgumentNullException.ThrowIfNull(surface);
-        ArgumentNullException.ThrowIfNull(path);
-        if (path.Count == 0 || radius <= 0)
-        {
-            return;
-        }
-
-        opacity = Math.Clamp(opacity, 0f, 1f);
-        var spacing = MathF.Max(1f, radius * 0.5f);
-        surface.MarkDirty();
-
-        for (var i = 0; i < path.Count; i++)
-        {
-            if (i == 0)
+        Apply(
+            surface, path,
+            new BrushSettings
             {
-                Stamp(surface, path[0].X, path[0].Y, radius, r, g, b, a, opacity, selection);
-                continue;
-            }
-
-            var (x0, y0) = path[i - 1];
-            var (x1, y1) = path[i];
-            var dx = x1 - x0;
-            var dy = y1 - y0;
-            var length = MathF.Sqrt((dx * dx) + (dy * dy));
-            var steps = Math.Max(1, (int)MathF.Ceiling(length / spacing));
-            for (var s = 1; s <= steps; s++)
-            {
-                var t = s / (float)steps;
-                Stamp(surface, x0 + (dx * t), y0 + (dy * t), radius, r, g, b, a, opacity, selection);
-            }
-        }
+                Diameter = MathF.Max(1f, radius * 2f),
+                Hardness = 1f,
+                R = r,
+                G = g,
+                B = b,
+                A = a,
+                Opacity = opacity,
+            },
+            selection);
     }
 
     /// <summary>Axis-aligned bounds a stroke would touch, clamped to the surface.</summary>
@@ -74,70 +87,4 @@ public static class BrushStroke
         var y1 = Math.Min(surfaceHeight - 1, (int)MathF.Ceiling(maxY) - 1);
         return x1 < x0 || y1 < y0 ? (0, 0, 0, 0) : (x0, y0, x1 - x0 + 1, y1 - y0 + 1);
     }
-
-    private static void Stamp(
-        RasterSurface surface, float cx, float cy,
-        float radius, byte r, byte g, byte b, byte a, float opacity,
-        Selection.SelectionClip? selection = null)
-    {
-        var x0 = Math.Max(0, (int)MathF.Floor(cx - radius));
-        var y0 = Math.Max(0, (int)MathF.Floor(cy - radius));
-        var x1 = Math.Min(surface.Width - 1, (int)MathF.Ceiling(cx + radius));
-        var y1 = Math.Min(surface.Height - 1, (int)MathF.Ceiling(cy + radius));
-
-        var srcA = (a / 255f) * opacity;
-        if (srcA <= 0f)
-        {
-            return;
-        }
-
-        for (var y = y0; y <= y1; y++)
-        {
-            for (var x = x0; x <= x1; x++)
-            {
-                var dx = (x + 0.5f) - cx;
-                var dy = (y + 0.5f) - cy;
-                var dist = MathF.Sqrt((dx * dx) + (dy * dy));
-                if (dist > radius)
-                {
-                    continue;
-                }
-
-                var falloff = 1f - (dist / radius);
-                if (selection is not null)
-                {
-                    var factor = selection.FactorAt(x, y);
-                    if (factor <= 0f)
-                    {
-                        continue;
-                    }
-                    falloff *= factor;
-                }
-                var stampAlpha = srcA * falloff;
-                BlendPixel(surface, x, y, r, g, b, stampAlpha);
-            }
-        }
-    }
-
-    private static void BlendPixel(RasterSurface surface, int x, int y, byte r, byte g, byte b, float alpha)
-    {
-        var i = ((y * surface.Width) + x) * 4;
-        var dstR = surface.Pixels[i] / 255f;
-        var dstG = surface.Pixels[i + 1] / 255f;
-        var dstB = surface.Pixels[i + 2] / 255f;
-        var dstA = surface.Pixels[i + 3] / 255f;
-
-        var outA = alpha + (dstA * (1f - alpha));
-        if (outA <= 0f)
-        {
-            return;
-        }
-
-        surface.Pixels[i] = ToByte(((r / 255f * alpha) + (dstR * dstA * (1f - alpha))) / outA);
-        surface.Pixels[i + 1] = ToByte(((g / 255f * alpha) + (dstG * dstA * (1f - alpha))) / outA);
-        surface.Pixels[i + 2] = ToByte(((b / 255f * alpha) + (dstB * dstA * (1f - alpha))) / outA);
-        surface.Pixels[i + 3] = ToByte(outA);
-    }
-
-    private static byte ToByte(float v) => (byte)Math.Clamp(v * 255f + 0.5f, 0f, 255f);
 }

@@ -100,8 +100,8 @@ public class SelectionTests
 
         BrushStroke.Apply(surface, [(2, 5), (8, 5)], radius: 2, 255, 0, 0, 255, 1f, clip);
 
-        // Inside: painted (multiple overlapping stamps, saturated well above half alpha).
-        Assert.InRange(surface.GetPixel(1, 5).A, 150, 220);
+        // Inside: painted (overlapping dabs saturate coverage to full under the cap).
+        Assert.Equal(255, surface.GetPixel(1, 5).A);
         Assert.Equal(0, surface.GetPixel(9, 5).A);  // outside selection
         Assert.Equal(0, surface.GetPixel(7, 5).A);  // stroke reaches here unconstrained; mask blocks it
     }

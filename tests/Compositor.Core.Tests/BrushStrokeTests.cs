@@ -56,8 +56,8 @@ public sealed class BrushStrokeTests
         BrushStroke.Apply(
             surface, [(25f, 25f)], radius: 10, 255, 0, 0, 255, opacity: 0.5f);
 
-        var (r, g, b, a) = surface.GetPixel(25, 25); // center: falloff = 1
-        Assert.InRange(a, 110, 125); // 0.5 opacity x center-offset falloff
+        var (r, g, b, a) = surface.GetPixel(25, 25); // center: coverage saturates to full
+        Assert.InRange(a, 126, 130); // opacity cap is exact: 255 * 0.5 = 127.5 -> 128
         Assert.InRange(r, 240, 255);
     }
 

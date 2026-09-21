@@ -61,23 +61,79 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// </summary>
     public event Action? DocumentChanged;
 
-    private float _brushRadius = 24f;
-    /// <summary>Brush radius in document pixels, clamped to 1..256.</summary>
-    public float BrushRadius
+    private float _brushDiameter = 40f;
+    /// <summary>Brush diameter in document pixels (upstream default 40), clamped to 1..512.</summary>
+    public float BrushDiameter
     {
-        get => _brushRadius;
+        get => _brushDiameter;
         set
         {
-            var clamped = Math.Clamp(value, 1f, 256f);
-            if (Math.Abs(_brushRadius - clamped) < 0.001f)
+            var clamped = Math.Clamp(value, 1f, 512f);
+            if (Math.Abs(_brushDiameter - clamped) < 0.001f)
             {
                 return;
             }
 
-            _brushRadius = clamped;
-            OnPropertyChanged(nameof(BrushRadius));
+            _brushDiameter = clamped;
+            OnPropertyChanged(nameof(BrushDiameter));
         }
     }
+
+    private float _brushHardness = 1f;
+    /// <summary>0 = fully soft (Gaussian falloff to the rim), 1 = hard disc.</summary>
+    public float BrushHardness
+    {
+        get => _brushHardness;
+        set
+        {
+            var clamped = Math.Clamp(value, 0f, 1f);
+            if (Math.Abs(_brushHardness - clamped) < 0.001f)
+            {
+                return;
+            }
+
+            _brushHardness = clamped;
+            OnPropertyChanged(nameof(BrushHardness));
+        }
+    }
+
+    private float _brushOpacity = 1f;
+    /// <summary>Stroke opacity cap: overlapping dabs never exceed it.</summary>
+    public float BrushOpacity
+    {
+        get => _brushOpacity;
+        set
+        {
+            var clamped = Math.Clamp(value, 0f, 1f);
+            if (Math.Abs(_brushOpacity - clamped) < 0.001f)
+            {
+                return;
+            }
+
+            _brushOpacity = clamped;
+            OnPropertyChanged(nameof(BrushOpacity));
+        }
+    }
+
+    private bool _isErasing;
+    /// <summary>Eraser mode: strokes clear the layer's alpha (upstream erasing).</summary>
+    public bool IsErasing
+    {
+        get => _isErasing;
+        set { if (_isErasing == value) return; _isErasing = value; OnPropertyChanged(nameof(IsErasing)); }
+    }
+
+    private BrushSettings SnapshotBrushSettings() => new()
+    {
+        Diameter = _brushDiameter,
+        Hardness = _brushHardness,
+        R = _brushR,
+        G = _brushG,
+        B = _brushB,
+        A = 255,
+        Opacity = _brushOpacity,
+        Erasing = _isErasing,
+    };
 
     private byte _brushR = 20, _brushG = 20, _brushB = 20;
     public byte BrushR
@@ -116,6 +172,8 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     private RasterSurface? _strokeSurface;
     private byte[]? _strokeBefore;
     private SelectionClip? _strokeClip;
+    private StrokeCoverage? _strokeCoverage;
+    private BrushSettings? _strokeSettings;
 
     /// <summary>Which tool the canvas pointer feeds (brush or a selection kind).</summary>
     public enum EditorTool { Brush, RectangleSelect, EllipseSelect, LassoSelect }
@@ -171,28 +229,30 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         _strokePath = [(docX, docY)];
         _strokeBefore = (byte[])_strokeSurface.Pixels.Clone();
         _strokeClip = Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
+        _strokeSettings = SnapshotBrushSettings();
+        _strokeCoverage = new StrokeCoverage(_strokeSurface.Width, _strokeSurface.Height, _strokeSettings, _strokeClip);
+        _strokeCoverage.WalkTo(docX, docY); // first dab lands immediately (upstream walk)
+        _strokeCoverage.PaintRegion(_strokeSurface, _strokeBefore);
         IsStrokeActive = true;
         return true;
     }
 
     /// <summary>
-    /// Extends the in-progress stroke to a new document point, live-painting
-    /// the connecting segment for immediate feedback. Undo is recorded once
-    /// per whole stroke, at <see cref="EndStroke"/>.
+    /// Extends the in-progress stroke to a new document point, laying dabs at
+    /// even spacing for immediate feedback. Undo is recorded once per whole
+    /// stroke, at <see cref="EndStroke"/>.
     /// </summary>
     public void ContinueStroke(float docX, float docY)
     {
-        if (!IsStrokeActive || _strokePath is null || _strokeSurface is null)
+        if (!IsStrokeActive || _strokePath is null || _strokeSurface is null
+            || _strokeCoverage is null || _strokeBefore is null)
         {
             return;
         }
 
-        var prev = _strokePath[^1];
         _strokePath.Add((docX, docY));
-        BrushStroke.Apply(
-            _strokeSurface,
-            [(prev.X, prev.Y), (docX, docY)],
-            _brushRadius, _brushR, _brushG, _brushB, 255, 1f, _strokeClip);
+        _strokeCoverage.WalkTo(docX, docY);
+        _strokeCoverage.PaintRegion(_strokeSurface, _strokeBefore);
     }
 
     /// <summary>
@@ -202,15 +262,17 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// </summary>
     public bool EndStroke()
     {
-        if (!IsStrokeActive || _strokePath is null || _strokeBefore is null || _strokeSurface is null)
+        if (!IsStrokeActive || _strokePath is null || _strokeBefore is null || _strokeSurface is null
+            || _strokeCoverage is null || _strokeSettings is null)
         {
             return false;
         }
 
-        PaintDotIfNeeded(_strokePath, _strokeSurface);
+        // Final pass from the pre-stroke snapshot (idempotent), then file the
+        // command as already applied — see StrokeCommand.
+        _strokeCoverage.PaintRegion(_strokeSurface, _strokeBefore);
         var cmd = new StrokeCommand(
-            _strokeSurface, _strokePath, _brushRadius,
-            _brushR, _brushG, _brushB, 255, 1f,
+            _strokeSurface, _strokePath, _strokeSettings,
             _strokeBefore, alreadyApplied: true, _strokeClip);
         History.Record(cmd);
 
@@ -218,23 +280,12 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         _strokeBefore = null;
         _strokeSurface = null;
         _strokeClip = null;
+        _strokeCoverage = null;
+        _strokeSettings = null;
         IsStrokeActive = false;
         OnHistoryChanged();
         RaiseDocumentChanged();
         return true;
-    }
-
-    /// <summary>
-    /// Paints a click-dot: a single-point path never went through the
-    /// live-feedback segment painting, so the stamp happens here.
-    /// </summary>
-    private void PaintDotIfNeeded(List<(float X, float Y)> path, RasterSurface surface)
-    {
-        if (path.Count == 1)
-        {
-            BrushStroke.Apply(
-                surface, path, _brushRadius, _brushR, _brushG, _brushB, 255, 1f, _strokeClip);
-        }
     }
 
     // ---- Selection tools (marquee / lasso) and clipboard commands ----

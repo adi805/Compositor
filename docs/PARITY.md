@@ -11,7 +11,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 
 | Upstream file | LOC | Status | Catatan |
 |---|---|---|---|
-| BrushStroke.swift | 899 | partial | Kit punya soft-round brush; belum spacing/stamping/hardness/flow/pressure (WS7) |
+| BrushStroke.swift | 899 | done | WS7: stamping/spacing/hardness/opacity-cap/eraser port penuh (coverage mask screen/max); flow + pressure = n/a upstream (gak ada di Mac) |
 | EditorSession.swift | 689 | partial | Peran session dipecah ke EditorViewModel; belum tool-state lengkap |
 | HueSaturation.swift | 574 | partial | WS4: band math + master/colorize + sheet; per-band spectrum UI & eyedroppers missing |
 | Filters.swift | 473 | missing | WS9 |
@@ -26,7 +26,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | ProjectWorkspace.swift | 210 | missing | WS10 (multi-project tabs) |
 | SelectionEdits.swift | 205 | partial | Constrained paint + masked blend (WS3) |
 | SelectionClipboard.swift | 204 | done | Copy/cut/paste via selection, floating commit as one undo step |
-| EditorSession+Brush.swift | 201 | partial | VM wiring brush ada; belum parameter lengkap |
+| EditorSession+Brush.swift | 201 | done | WS7: settings lengkap (diameter/hardness/opacity/eraser) di VM + toolbar |
 | Crop.swift | 199 | done | WS6: CropCommand via contentOffset + CropGeometry.valid + crop-to-selection; drag-tool visual di WS8 |
 | LayerGroups.swift | 190 | partial | WS5: hierarchy entries/validate/visible, group selected + new folder + reorder undo-able, indent rows; drag-reorder di panel belum |
 | FloatingSelection.swift | 159 | partial | Floating overlay + nudge/commit/cancel; no drag-move yet |
@@ -151,3 +151,12 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - UI: menu Image (Image Size/Canvas Size/Crop/Crop to Selection), floating GeometryPanel (W/H/DPI, anchor picker 9 opsi, fill checkbox, crop X/Y/W/H)
 - Tests: 24 Core + 10 App; total 242 (172 Core + 70 App)
 - Partial vs upstream: units (percent/inches/cm) + relative/locked di CanvasSizeDraft belum di-UI (math units-nya sugar di atas op pixel yang lengkap); visual drag-crop tool nunggu WS8 tools
+
+## WS7 - Brush v2 - 2026-09-21
+- BrushSettings (upstream defaults: diameter 40, hardness 1, opacity = stroke cap, erasing flag); Validate() ala guard BrushStroke init
+- StrokeCoverage: pre-rendered soft tip (Gaussian k=2.5 exact port, normalized hardness->rim), stamp spacing = max(0.25, diameter x fraction), fraction 1.5% hard / 2.5% soft, remainder state nyambung antar segmen (upstream walk(to:))
+- Dab -> coverage mask: screen (soft) / max (hard) = overlapping dabs gak pernah nglampau full coverage; paint lewat warna dgn opacity cap Photoshop-style (recompute dari before-snapshot = live == final, idempoten)
+- Eraser: stroke nurunin alpha layer (coverage x opacity), RGB dipertahankan
+- StrokeCommand ctor BrushSettings + legacy adapter (radius/rgba/opacity); VM: slider diameter/hardness/opacity + toggle eraser; PaintDotIfNeeded obsolete (WalkTo dab titik pertama langsung)
+- JUJUR: upstream Mac GAK punya knob "flow" terpisah (deposition rate = spacing x falloff) dan GAK ada stylus pressure di jalur paint (pressure cuma di konstruktor event test) - jadi dua-duanya n/a upstream, bukan missing di port
+- Tests: 15 Core (falloff hand-computed, spacing fraction, tip profile, cap, live-vs-final identik, eraser, undo) + 6 App; total 263 (187 Core + 76 App)

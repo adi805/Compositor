@@ -12,9 +12,7 @@ public sealed class StrokeCommand : IUndoCommand
 {
     private readonly RasterSurface _surface;
     private readonly IReadOnlyList<(float X, float Y)> _path;
-    private readonly float _radius;
-    private readonly byte _r, _g, _b, _a;
-    private readonly float _opacity;
+    private readonly BrushSettings _settings;
     private readonly (int X, int Y, int Width, int Height) _bounds;
     private readonly byte[] _before;
     private readonly Selection.SelectionClip? _clip;
@@ -34,15 +32,14 @@ public sealed class StrokeCommand : IUndoCommand
     public StrokeCommand(
         RasterSurface surface,
         IReadOnlyList<(float X, float Y)> path,
-        float radius,
-        byte r, byte g, byte b, byte a,
-        float opacity,
+        BrushSettings settings,
         byte[] beforeFullSnapshot,
         bool alreadyApplied,
         Selection.SelectionClip? clip = null)
     {
         _surface = surface ?? throw new ArgumentNullException(nameof(surface));
         _path = path ?? throw new ArgumentNullException(nameof(path));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         ArgumentNullException.ThrowIfNull(beforeFullSnapshot);
         if (_path.Count == 0)
         {
@@ -56,14 +53,8 @@ public sealed class StrokeCommand : IUndoCommand
                 $"expected {surface.Pixels.Length}.");
         }
 
-        _radius = radius;
-        _r = r;
-        _g = g;
-        _b = b;
-        _a = a;
-        _opacity = opacity;
         _clip = clip;
-        _bounds = BrushStroke.Bounds(path, radius, surface.Width, surface.Height);
+        _bounds = BrushStroke.Bounds(path, _settings.Radius, surface.Width, surface.Height);
         _before = ExtractRegion(beforeFullSnapshot);
         if (alreadyApplied)
         {
@@ -71,11 +62,37 @@ public sealed class StrokeCommand : IUndoCommand
         }
     }
 
+    /// <summary>Hard-round-brush adapter (radius + color + opacity).</summary>
+    public StrokeCommand(
+        RasterSurface surface,
+        IReadOnlyList<(float X, float Y)> path,
+        float radius,
+        byte r, byte g, byte b, byte a,
+        float opacity,
+        byte[] beforeFullSnapshot,
+        bool alreadyApplied,
+        Selection.SelectionClip? clip = null)
+        : this(
+            surface, path,
+            new BrushSettings
+            {
+                Diameter = MathF.Max(1f, radius * 2f),
+                Hardness = 1f,
+                R = r,
+                G = g,
+                B = b,
+                A = a,
+                Opacity = opacity,
+            },
+            beforeFullSnapshot, alreadyApplied, clip)
+    {
+    }
+
     public void Redo()
     {
         if (_after is null)
         {
-            BrushStroke.Apply(_surface, _path, _radius, _r, _g, _b, _a, _opacity, _clip);
+            BrushStroke.Apply(_surface, _path, _settings, _clip);
             _after = Capture(_bounds);
         }
         else
