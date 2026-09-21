@@ -53,8 +53,8 @@ public sealed class GroupLayersCommand : IUndoCommand
 {
     private readonly Document _doc;
     private readonly IReadOnlyList<Layer> _members;
-    private readonly IReadOnlyList<int> _memberIndices;
-    private readonly IReadOnlyList<Guid?> _oldParents;
+    private readonly int[] _memberIndices;
+    private readonly Guid?[] _oldParents;
     private readonly Layer _group;
     private readonly int _insertIndex;
 
@@ -205,7 +205,7 @@ public sealed class MergeLayersCommand : IUndoCommand
 {
     private readonly Document _doc;
     private readonly IReadOnlyList<Layer> _sources;
-    private readonly IReadOnlyList<int> _sourceIndices;
+    private readonly int[] _sourceIndices;
     private readonly Layer _merged;
     private readonly int _anchorIndex;
 
