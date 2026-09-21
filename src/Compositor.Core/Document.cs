@@ -10,8 +10,11 @@ public sealed class Document
     public Guid Id { get; } = Guid.NewGuid();
 
     public string Name { get; set; } = "Untitled";
-    public int Width { get; }
-    public int Height { get; }
+    public int Width { get; private set; }
+    public int Height { get; private set; }
+
+    /// <summary>Print resolution in DPI (upstream manifest resolution, default 72).</summary>
+    public double Resolution { get; set; } = 72;
 
     /// <summary>Active layer, serialized as activeLayerUUID. Null is valid.</summary>
     public Guid? ActiveLayerId { get; set; }
@@ -41,4 +44,18 @@ public sealed class Document
     }
 
     public bool RemoveLayer(Layer layer) => Layers.Remove(layer);
+
+    /// <summary>
+    /// Canvas bounds, upstream limit 1..30000 per side (CanvasSizeOptions/ImageResizer).
+    /// Called by geometry commands only.
+    /// </summary>
+    public void SetSize(int width, int height)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(width, 30_000);
+        ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(height, 30_000);
+        Width = width;
+        Height = height;
+    }
 }

@@ -188,6 +188,7 @@ public static class ProjectStore
         Name = doc.Name,
         Width = doc.Width,
         Height = doc.Height,
+        Resolution = doc.Resolution,
         ActiveLayerUuid = doc.ActiveLayerId?.ToString(),
         Layers = doc.Layers.Select(l => new ManifestLayer
         {
@@ -335,6 +336,7 @@ public static class ProjectStore
         {
             Name = manifest.Name,
             ActiveLayerId = activeId,
+            Resolution = manifest.Resolution ?? 72,
         };
 
         foreach (var layer in manifest.Layers)

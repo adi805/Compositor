@@ -125,4 +125,48 @@ public static class SurfaceOps
         }
         return new RasterSurface(width, height, output);
     }
+
+    /// <summary>
+    /// Bilinear resample (upstream sampling quality "high" on redraw). Source
+    /// coordinates use the half-pixel-center convention; edge pixels clamp.
+    /// Channels resample independently in straight alpha.
+    /// </summary>
+    public static RasterSurface ResampleBilinear(RasterSurface source, int newWidth, int newHeight)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentOutOfRangeException.ThrowIfLessThan(newWidth, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(newHeight, 1);
+        var (srcW, srcH, src) = (source.Width, source.Height, source.Pixels);
+        var dst = new byte[newWidth * newHeight * 4];
+        var xRatio = (double)srcW / newWidth;
+        var yRatio = (double)srcH / newHeight;
+        for (var y = 0; y < newHeight; y++)
+        {
+            var sy = ((y + 0.5) * yRatio) - 0.5;
+            var y0 = (int)Math.Floor(sy);
+            var fy = sy - y0;
+            var row0 = Math.Clamp(y0, 0, srcH - 1) * srcW * 4;
+            var row1 = Math.Clamp(y0 + 1, 0, srcH - 1) * srcW * 4;
+            var dstRow = y * newWidth * 4;
+            for (var x = 0; x < newWidth; x++)
+            {
+                var sx = ((x + 0.5) * xRatio) - 0.5;
+                var x0 = (int)Math.Floor(sx);
+                var fx = sx - x0;
+                var cx0 = Math.Clamp(x0, 0, srcW - 1) * 4;
+                var cx1 = Math.Clamp(x0 + 1, 0, srcW - 1) * 4;
+                for (var c = 0; c < 4; c++)
+                {
+                    var p00 = src[row0 + cx0 + c];
+                    var p10 = src[row0 + cx1 + c];
+                    var p01 = src[row1 + cx0 + c];
+                    var p11 = src[row1 + cx1 + c];
+                    var top = p00 + ((p10 - p00) * fx);
+                    var bottom = p01 + ((p11 - p01) * fx);
+                    dst[dstRow + (x * 4) + c] = (byte)Math.Round(top + ((bottom - top) * fy), MidpointRounding.AwayFromZero);
+                }
+            }
+        }
+        return new RasterSurface(newWidth, newHeight, dst);
+    }
 }

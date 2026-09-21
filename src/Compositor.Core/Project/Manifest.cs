@@ -24,6 +24,10 @@ public sealed record Manifest
     [JsonPropertyName("height")]
     public int Height { get; init; }
 
+    /// <summary>Print resolution DPI. Optional for pre-v6 Mac files; default 72.</summary>
+    [JsonPropertyName("resolution")]
+    public double? Resolution { get; init; }
+
     [JsonPropertyName("activeLayerUUID")]
     public string? ActiveLayerUuid { get; init; }
 
