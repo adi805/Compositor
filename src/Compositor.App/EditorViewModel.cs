@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Compositor.Core;
+using Compositor.Core.Adjustments;
 using Compositor.Core.Imaging;
 using Compositor.Core.Project;
 using Compositor.Core.Selection;
@@ -695,6 +696,206 @@ public sealed class EditorViewModel : INotifyPropertyChanged
 
     private void OnPropertyChanged(string name) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    // ------------------------------------------------------------- adjustments
+
+    /// <summary>Destructive per-layer adjustments, mirroring the upstream sheets.</summary>
+    public enum AdjustmentKind { Levels, Curves, HueSaturation, Exposure, GradientMap }
+
+    private AdjustmentKind? _openAdjustment;
+    /// <summary>The sheet currently open, or null.</summary>
+    public AdjustmentKind? OpenAdjustment
+    {
+        get => _openAdjustment;
+        private set
+        {
+            if (_openAdjustment == value)
+            {
+                return;
+            }
+
+            _openAdjustment = value;
+            OnPropertyChanged(nameof(OpenAdjustment));
+        }
+    }
+
+    /// <summary>Live settings for the open sheet (reset on every open).</summary>
+    public LevelsSettings LevelsState { get; private set; } = new();
+    public CurvesSettings CurvesState { get; private set; } = new();
+    public HueSaturationSettings HueSatState { get; private set; } = new();
+    public ExposureSettings ExposureState { get; private set; } = new();
+    public GradientMapSettings GradientMapState { get; private set; } = new();
+
+    private RasterSurface? _adjustmentPreview;
+
+    /// <summary>Bumps on every preview recompute; the canvas caches bitmaps by this.</summary>
+    public long AdjustmentPreviewGeneration { get; private set; }
+
+    /// <summary>
+    /// Adjusted copy of the active layer for live preview, or null when settings
+    /// are identity or no sheet is open. The canvas draws this over the raw layer.
+    /// </summary>
+    public RasterSurface? AdjustmentPreviewSurface => _adjustmentPreview;
+
+    public SelectionClip? CurrentAdjustmentClip =>
+        Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
+
+    /// <summary>Replaces the Levels state with an auto strategy computed from the active layer.</summary>
+    public void ApplyLevelsAuto(LevelsAuto mode)
+    {
+        if (ActiveLayer?.Pixels is not { } surface)
+        {
+            return;
+        }
+
+        LevelsState = mode.Settings(LevelsHistogram.Compute(surface, CurrentAdjustmentClip));
+        OnPropertyChanged(nameof(LevelsState));
+        UpdateAdjustmentPreview();
+    }
+
+    private static bool IsCurvesIdentity(CurvesSettings c)
+    {
+        foreach (var points in c.Channels)
+        {
+            if (points.Length != 2 || points[0] != new CurvePoint(0, 0) || points[1] != new CurvePoint(255, 255))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsExposureIdentity(ExposureSettings e) =>
+        e.Exposure == 0 && e.Offset == 0 && e.Gamma == 1;
+
+    private RasterSurface? RunAdjustment(AdjustmentKind kind, RasterSurface surface, SelectionClip? clip) => kind switch
+    {
+        AdjustmentKind.Levels => LevelsState.IsIdentity
+            ? null
+            : AdjustmentRunner.ApplyTables(surface, LevelsState.BuildTables(), clip),
+        AdjustmentKind.Curves => !CurvesState.IsValid || IsCurvesIdentity(CurvesState)
+            ? null
+            : AdjustmentRunner.ApplyTables(surface, CurvesState.BuildTables(), clip),
+        AdjustmentKind.HueSaturation => HueSatState.IsIdentity
+            ? null
+            : AdjustmentRunner.ApplyHueSaturation(surface, HueSatState, clip),
+        AdjustmentKind.Exposure => !ExposureState.IsValid || IsExposureIdentity(ExposureState)
+            ? null
+            : AdjustmentRunner.ApplyExposure(surface, ExposureState, clip),
+        AdjustmentKind.GradientMap => GradientMapState.IsValid
+            ? AdjustmentRunner.ApplyGradientMap(surface, GradientMapState, clip)
+            : null,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Opens an adjustment sheet on the active layer. Fails when another sheet
+    /// is open, a floating selection is pending, or the layer is missing/locked.
+    /// </summary>
+    public bool OpenAdjustmentSheet(AdjustmentKind kind)
+    {
+        if (OpenAdjustment is not null || Floating is not null)
+        {
+            return false;
+        }
+
+        var layer = ActiveLayer;
+        if (layer is null || layer.IsLocked)
+        {
+            return false;
+        }
+
+        layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
+        LevelsState = new LevelsSettings();
+        CurvesState = new CurvesSettings();
+        HueSatState = new HueSaturationSettings();
+        ExposureState = new ExposureSettings();
+        GradientMapState = new GradientMapSettings();
+        OnPropertyChanged(nameof(LevelsState));
+        OnPropertyChanged(nameof(CurvesState));
+        OnPropertyChanged(nameof(HueSatState));
+        OnPropertyChanged(nameof(ExposureState));
+        OnPropertyChanged(nameof(GradientMapState));
+        OpenAdjustment = kind;
+        UpdateAdjustmentPreview();
+        return true;
+    }
+
+    /// <summary>Recomputes the preview from the current sheet settings.</summary>
+    public void UpdateAdjustmentPreview()
+    {
+        if (OpenAdjustment is not { } kind || ActiveLayer?.Pixels is not { } surface)
+        {
+            _adjustmentPreview = null;
+            return;
+        }
+
+        _adjustmentPreview = RunAdjustment(kind, surface, CurrentAdjustmentClip);
+        AdjustmentPreviewGeneration++;
+        DocumentChanged?.Invoke();
+    }
+
+    /// <summary>Applies the open sheet to the layer as one undoable command.</summary>
+    public bool CommitAdjustment()
+    {
+        if (OpenAdjustment is not { } kind || ActiveLayer?.Pixels is not { } surface)
+        {
+            return false;
+        }
+
+        var adjusted = _adjustmentPreview ?? RunAdjustment(kind, surface, CurrentAdjustmentClip);
+        if (adjusted is null)
+        {
+            return CancelAdjustment(); // identity: nothing to commit
+        }
+
+        var before = (byte[])surface.Pixels.Clone();
+        var after = (byte[])adjusted.Pixels.Clone();
+        History.Push(new AdjustmentCommand(surface, before, after, kind.ToString()));
+        _adjustmentPreview = null;
+        OpenAdjustment = null;
+        RaiseDocumentChanged();
+        return true;
+    }
+
+    /// <summary>Closes the sheet and drops the preview without touching pixels.</summary>
+    public bool CancelAdjustment()
+    {
+        if (OpenAdjustment is null)
+        {
+            return false;
+        }
+
+        _adjustmentPreview = null;
+        OpenAdjustment = null;
+        RaiseDocumentChanged();
+        return true;
+    }
+
+    /// <summary>Inverts the active layer's colors (Cmd+I upstream), one undoable command.</summary>
+    public bool ApplyInvert()
+    {
+        if (OpenAdjustment is not null || Floating is not null)
+        {
+            return false;
+        }
+
+        var layer = ActiveLayer;
+        if (layer is null || layer.IsLocked)
+        {
+            return false;
+        }
+
+        layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
+        var surface = layer.Pixels;
+        var adjusted = AdjustmentRunner.ApplyInvert(surface, CurrentAdjustmentClip);
+        var before = (byte[])surface.Pixels.Clone();
+        var after = (byte[])adjusted.Pixels.Clone();
+        History.Push(new AdjustmentCommand(surface, before, after, "Invert"));
+        RaiseDocumentChanged();
+        return true;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }

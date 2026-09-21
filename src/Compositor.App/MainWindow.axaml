@@ -31,6 +31,15 @@
         <MenuItem Header="_Commit floating" Click="OnCommitFloating" InputGesture="Enter" />
         <MenuItem Header="Cancel _floating" Click="OnCancelFloating" InputGesture="Escape" />
       </MenuItem>
+      <MenuItem Header="_Adjust">
+        <MenuItem Header="_Levels..." Click="OnAdjustLevels" />
+        <MenuItem Header="_Curves..." Click="OnAdjustCurves" />
+        <MenuItem Header="Hue/_Saturation..." Click="OnAdjustHueSat" />
+        <MenuItem Header="_Exposure..." Click="OnAdjustExposure" />
+        <MenuItem Header="_Gradient Map..." Click="OnAdjustGradientMap" />
+        <Separator />
+        <MenuItem Header="In_vert colors" Click="OnInvertColors" />
+      </MenuItem>
     </Menu>
     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,4,8,4">
       <ComboBox x:Name="ToolPicker" Width="130" SelectedIndex="0" ToolTip.Tip="Tool"
@@ -68,7 +77,79 @@
       <Button x:Name="FitButton" Content="Fit" Click="OnFitView" ToolTip.Tip="Fit to window" />
     </StackPanel>
     <Grid Grid.Row="2" ColumnDefinitions="*,300">
-      <local:CanvasView x:Name="EditorCanvas" Grid.Column="0" ViewModel="{Binding}" />
+      <Panel Grid.Column="0">
+        <local:CanvasView x:Name="EditorCanvas" ViewModel="{Binding}" />
+        <Border x:Name="AdjustmentsPanel" Background="#E6202020" CornerRadius="8"
+                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="12" Padding="14" Width="340" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="AdjustmentTitle" FontWeight="Bold" />
+            <!-- Levels -->
+            <StackPanel x:Name="LevelsControls" Spacing="6" IsVisible="False">
+              <ComboBox x:Name="LevelsChannelPicker" Width="140" SelectedIndex="0"
+                        SelectionChanged="OnLevelsChannelChanged">
+                <ComboBoxItem>RGB</ComboBoxItem><ComboBoxItem>Red</ComboBoxItem>
+                <ComboBoxItem>Green</ComboBoxItem><ComboBoxItem>Blue</ComboBoxItem>
+              </ComboBox>
+              <Canvas x:Name="LevelsHistogramCanvas" Height="90" />
+              <TextBlock Text="Black point" /><Slider x:Name="LevelsBlack" Minimum="0" Maximum="254" ValueChanged="OnLevelsSlider" />
+              <TextBlock Text="Gamma" /><Slider x:Name="LevelsGamma" Minimum="0.1" Maximum="9.99" ValueChanged="OnLevelsSlider" />
+              <TextBlock Text="White point" /><Slider x:Name="LevelsWhite" Minimum="1" Maximum="255" ValueChanged="OnLevelsSlider" />
+              <TextBlock Text="Output black" /><Slider x:Name="LevelsOutBlack" Minimum="0" Maximum="255" ValueChanged="OnLevelsSlider" />
+              <TextBlock Text="Output white" /><Slider x:Name="LevelsOutWhite" Minimum="0" Maximum="255" ValueChanged="OnLevelsSlider" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Content="Auto contrast" Click="OnLevelsAutoContrast" />
+                <Button Content="Auto color" Click="OnLevelsAutoColor" />
+                <Button Content="Auto neutral" Click="OnLevelsAutoNeutral" />
+              </StackPanel>
+            </StackPanel>
+            <!-- Curves -->
+            <StackPanel x:Name="CurvesControls" Spacing="6" IsVisible="False">
+              <ComboBox x:Name="CurvesChannelPicker" Width="140" SelectedIndex="0"
+                        SelectionChanged="OnCurvesChannelChanged">
+                <ComboBoxItem>RGB</ComboBoxItem><ComboBoxItem>Red</ComboBoxItem>
+                <ComboBoxItem>Green</ComboBoxItem><ComboBoxItem>Blue</ComboBoxItem>
+              </ComboBox>
+              <Canvas x:Name="CurvesCanvas" Width="256" Height="256" Background="#11333333"
+                      PointerPressed="OnCurvesPointer" PointerMoved="OnCurvesPointerMove"
+                      PointerReleased="OnCurvesPointerEnd" PointerWheelChanged="OnCurvesWheel" />
+              <TextBlock Text="Click: add / drag point · right-click: remove" FontSize="11" Opacity="0.7" />
+            </StackPanel>
+            <!-- Hue/Saturation -->
+            <StackPanel x:Name="HueSatControls" Spacing="6" IsVisible="False">
+              <ComboBox x:Name="HueRangePicker" Width="160" SelectedIndex="0"
+                        SelectionChanged="OnHueRangeChanged">
+                <ComboBoxItem>Master</ComboBoxItem><ComboBoxItem>Reds</ComboBoxItem>
+                <ComboBoxItem>Yellows</ComboBoxItem><ComboBoxItem>Greens</ComboBoxItem>
+                <ComboBoxItem>Cyans</ComboBoxItem><ComboBoxItem>Blues</ComboBoxItem>
+                <ComboBoxItem>Magentas</ComboBoxItem>
+              </ComboBox>
+              <TextBlock Text="Hue" /><Slider x:Name="HueSlider" Minimum="-180" Maximum="180" ValueChanged="OnHueSatSlider" />
+              <TextBlock Text="Saturation" /><Slider x:Name="SatSlider" Minimum="-100" Maximum="100" ValueChanged="OnHueSatSlider" />
+              <TextBlock Text="Lightness" /><Slider x:Name="LightSlider" Minimum="-100" Maximum="100" ValueChanged="OnHueSatSlider" />
+              <CheckBox x:Name="ColorizeCheck" Content="Colorize" Checked="OnHueSatSlider" Unchecked="OnHueSatSlider" />
+            </StackPanel>
+            <!-- Exposure -->
+            <StackPanel x:Name="ExposureControls" Spacing="6" IsVisible="False">
+              <TextBlock Text="Exposure (stops)" /><Slider x:Name="ExposureSlider" Minimum="-5" Maximum="5" ValueChanged="OnExposureSlider" />
+              <TextBlock Text="Offset" /><Slider x:Name="OffsetSlider" Minimum="-0.5" Maximum="0.5" ValueChanged="OnExposureSlider" />
+              <TextBlock Text="Gamma" /><Slider x:Name="GammaSlider" Minimum="0.1" Maximum="5" Value="1" ValueChanged="OnExposureSlider" />
+            </StackPanel>
+            <!-- Gradient Map -->
+            <StackPanel x:Name="GradientMapControls" Spacing="6" IsVisible="False">
+              <TextBlock Text="Shadows" />
+              <ColorPicker x:Name="ShadowPicker" Height="44" ColorChanged="OnGradientMapColor" />
+              <TextBlock Text="Highlights" />
+              <ColorPicker x:Name="HighlightPicker" Height="44" ColorChanged="OnGradientMapColor" />
+              <CheckBox x:Name="ReverseCheck" Content="Reverse" Checked="OnGradientMapReverse" Unchecked="OnGradientMapReverse" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button x:Name="AdjustmentOk" Content="OK" Click="OnAdjustmentOk" />
+              <Button x:Name="AdjustmentCancel" Content="Cancel" Click="OnAdjustmentCancel" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Panel>
       <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="8">
         <TextBlock Grid.Row="0" Text="Layers" FontWeight="Bold" Margin="0,0,0,8" />
         <ListBox Grid.Row="1" x:Name="LayerList"

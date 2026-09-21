@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Compositor.Core;
+using Compositor.Core.Adjustments;
 
 namespace Compositor.App;
 
@@ -317,5 +318,467 @@ public partial class MainWindow : Window
             "Lasso select" => EditorViewModel.EditorTool.LassoSelect,
             _ => EditorViewModel.EditorTool.Brush,
         };
+    }
+
+    // ------------------------------------------------------ adjustment sheets
+
+    private void ShowAdjustmentSheet(string title, params Avalonia.Controls.Control[] toShow)
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+
+        AdjustmentTitle.Text = title;
+        AdjustmentsPanel.IsVisible = true;
+        LevelsControls.IsVisible = false;
+        CurvesControls.IsVisible = false;
+        HueSatControls.IsVisible = false;
+        ExposureControls.IsVisible = false;
+        GradientMapControls.IsVisible = false;
+        foreach (var control in toShow)
+        {
+            control.IsVisible = true;
+        }
+    }
+
+    private void HideAdjustmentPanel()
+    {
+        AdjustmentsPanel.IsVisible = false;
+    }
+
+    private void OnAdjustLevels(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenAdjustmentSheet(EditorViewModel.AdjustmentKind.Levels) == true)
+        {
+            ShowAdjustmentSheet("Levels", LevelsControls);
+            LevelsChannelPicker.SelectedIndex = (int)Vm.LevelsState.Channel;
+            LoadLevelsSliders();
+            DrawLevelsHistogram();
+        }
+    }
+
+    private void OnAdjustCurves(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenAdjustmentSheet(EditorViewModel.AdjustmentKind.Curves) == true)
+        {
+            ShowAdjustmentSheet("Curves", CurvesControls);
+            CurvesChannelPicker.SelectedIndex = (int)Vm.CurvesState.Channel;
+            DrawCurves();
+        }
+    }
+
+    private void OnAdjustHueSat(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenAdjustmentSheet(EditorViewModel.AdjustmentKind.HueSaturation) == true)
+        {
+            ShowAdjustmentSheet("Hue / Saturation", HueSatControls);
+            HueRangePicker.SelectedIndex = (int)Vm.HueSatState.Range;
+            LoadHueSatSliders();
+        }
+    }
+
+    private void OnAdjustExposure(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenAdjustmentSheet(EditorViewModel.AdjustmentKind.Exposure) == true)
+        {
+            ShowAdjustmentSheet("Exposure", ExposureControls);
+            ExposureSlider.Value = Vm.ExposureState.Exposure;
+            OffsetSlider.Value = Vm.ExposureState.Offset;
+            GammaSlider.Value = Math.Clamp(Vm.ExposureState.Gamma, 0.1, 5);
+        }
+    }
+
+    private void OnAdjustGradientMap(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenAdjustmentSheet(EditorViewModel.AdjustmentKind.GradientMap) == true)
+        {
+            ShowAdjustmentSheet("Gradient Map", GradientMapControls);
+            ShadowPicker.Color = ToAvaloniaColor(Vm.GradientMapState.Shadows);
+            HighlightPicker.Color = ToAvaloniaColor(Vm.GradientMapState.Highlights);
+            ReverseCheck.IsChecked = Vm.GradientMapState.Reversed;
+        }
+    }
+
+    private static Avalonia.Media.Color ToAvaloniaColor(AdjustmentColor c) =>
+        Avalonia.Media.Color.FromRgb(
+            (byte)Math.Clamp(Math.Round(c.Red * 255), 0, 255),
+            (byte)Math.Clamp(Math.Round(c.Green * 255), 0, 255),
+            (byte)Math.Clamp(Math.Round(c.Blue * 255), 0, 255));
+
+    private static AdjustmentColor ToAdjustmentColor(Avalonia.Media.Color c) =>
+        new(c.R / 255d, c.G / 255d, c.B / 255d);
+
+    private void OnAdjustmentOk(object? sender, RoutedEventArgs e)
+    {
+        Vm?.CommitAdjustment();
+        HideAdjustmentPanel();
+    }
+
+    private void OnAdjustmentCancel(object? sender, RoutedEventArgs e)
+    {
+        Vm?.CancelAdjustment();
+        HideAdjustmentPanel();
+    }
+
+    private void OnInvertColors(object? sender, RoutedEventArgs e) => Vm?.ApplyInvert();
+
+    // Levels ------------------------------------------------------------------
+
+    private void LoadLevelsSliders()
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+
+        var r = Vm.LevelsState.Current;
+        LevelsBlack.Value = r.Black;
+        LevelsGamma.Value = r.Gamma;
+        LevelsWhite.Value = r.White;
+        LevelsOutBlack.Value = r.OutputBlack;
+        LevelsOutWhite.Value = r.OutputWhite;
+    }
+
+    private void OnLevelsChannelChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+
+        Vm.LevelsState.Channel = (LevelsChannel)LevelsChannelPicker.SelectedIndex;
+        LoadLevelsSliders();
+    }
+
+    private void OnLevelsSlider(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (Vm is null || Vm.OpenAdjustment != EditorViewModel.AdjustmentKind.Levels)
+        {
+            return;
+        }
+
+        var r = Vm.LevelsState.Current;
+        r.Black = LevelsBlack.Value;
+        r.Gamma = LevelsGamma.Value;
+        r.White = LevelsWhite.Value;
+        r.OutputBlack = LevelsOutBlack.Value;
+        r.OutputWhite = LevelsOutWhite.Value;
+        Vm.LevelsState.Current = r; // normalized on write
+        Vm.UpdateAdjustmentPreview();
+    }
+
+    private void OnLevelsAuto(object? sender, RoutedEventArgs e, LevelsAuto mode)
+    {
+        if (Vm is null || Vm.OpenAdjustment != EditorViewModel.AdjustmentKind.Levels)
+        {
+            return;
+        }
+
+        Vm.ApplyLevelsAuto(mode);
+        LoadLevelsSliders();
+    }
+
+    private void OnLevelsAutoContrast(object? sender, RoutedEventArgs e) => OnLevelsAuto(sender, e, LevelsAuto.Contrast);
+    private void OnLevelsAutoColor(object? sender, RoutedEventArgs e) => OnLevelsAuto(sender, e, LevelsAuto.Color);
+    private void OnLevelsAutoNeutral(object? sender, RoutedEventArgs e) => OnLevelsAuto(sender, e, LevelsAuto.Neutral);
+
+    private void DrawLevelsHistogram()
+    {
+        LevelsHistogramCanvas.Children.Clear();
+        if (Vm?.ActiveLayer?.Pixels is not { } surface)
+        {
+            return;
+        }
+
+        var bins = LevelsHistogram.Compute(surface, Vm.CurrentAdjustmentClip);
+        var colors = new[] { "Gray", "Red", "Green", "Blue" };
+        for (var c = 0; c < 4; c++)
+        {
+            var scale = LevelsHistogram.DisplayScale(bins[c]);
+            if (scale <= 0)
+            {
+                continue;
+            }
+
+            var segments = new Avalonia.Controls.Shapes.Path
+            {
+                Stroke = c == 0 ? Avalonia.Media.Brushes.DimGray : new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.Parse(colors[c] switch { "Red" => "#C05040", "Green" => "#50A060", "Blue" => "#5070B0", _ => "#404040" })),
+                StrokeThickness = c == 0 ? 1 : 1,
+                Opacity = c == 0 ? 0.5 : 0.85,
+                Data = BuildHistogramGeometry(bins[c], scale),
+            };
+            LevelsHistogramCanvas.Children.Add(segments);
+        }
+    }
+
+    private static Avalonia.Media.StreamGeometry BuildHistogramGeometry(double[] bins, double scale)
+    {
+        var geometry = new Avalonia.Media.StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            const double height = 88;
+            ctx.BeginFigure(new Avalonia.Point(0, height), false);
+            for (var i = 0; i < 256; i++)
+            {
+                var y = height - Math.Min(height, bins[i] / scale * height);
+                ctx.LineTo(new Avalonia.Point(i, y));
+            }
+        }
+
+        return geometry;
+    }
+
+    // Curves ------------------------------------------------------------------
+
+    private int _curvesDragIndex = -1;
+
+    private int CurvesChannelIndex =>
+        CurvesChannelPicker.SelectedIndex is { } i && i > 0 ? i : 0;
+
+    private void OnCurvesChannelChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+
+        Vm.CurvesState.Channel = (LevelsChannel)CurvesChannelIndex;
+        DrawCurves();
+    }
+
+    private void DrawCurves()
+    {
+        CurvesCanvas.Children.Clear();
+        if (Vm is null)
+        {
+            return;
+        }
+
+        var channel = CurvesChannelIndex;
+        // diagonal reference
+        var diagonal = new Avalonia.Controls.Shapes.Line
+        {
+            StartPoint = new Avalonia.Point(0, 256),
+            EndPoint = new Avalonia.Point(256, 0),
+            Stroke = Avalonia.Media.Brushes.DimGray,
+            StrokeThickness = 1,
+            Opacity = 0.4,
+        };
+        CurvesCanvas.Children.Add(diagonal);
+
+        var curve = new Avalonia.Controls.Shapes.Polyline
+        {
+            Stroke = Avalonia.Media.Brushes.White,
+            StrokeThickness = 1.5,
+        };
+        var points = new Avalonia.Collections.AvaloniaList<Avalonia.Point>(17);
+        for (var x = 0; x <= 256; x += 16)
+        {
+            var y = Vm.CurvesState.Value(x, channel);
+            points.Add(new Avalonia.Point(x, 256 - y));
+        }
+
+        curve.Points = points;
+        CurvesCanvas.Children.Add(curve);
+
+        foreach (var p in Vm.CurvesState.Channels[channel])
+        {
+            CurvesCanvas.Children.Add(new Avalonia.Controls.Shapes.Ellipse
+            {
+                Width = 8,
+                Height = 8,
+                Fill = Avalonia.Media.Brushes.Orange,
+                Stroke = Avalonia.Media.Brushes.Black,
+                [Canvas.LeftProperty] = p.X - 4,
+                [Canvas.TopProperty] = 256 - p.Y - 4,
+            });
+        }
+    }
+
+    private void OnCurvesPointer(object? sender, PointerPressedEventArgs e)
+    {
+        if (Vm is null || e.GetCurrentPoint(CurvesCanvas).Properties.IsLeftButtonPressed == false)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(CurvesCanvas);
+        var channel = CurvesChannelIndex;
+        var docX = Math.Clamp(pos.X, 0, 255);
+        var docY = 256 - Math.Clamp(pos.Y, 0, 255);
+
+        _curvesDragIndex = NearestPointIndex(Vm.CurvesState.Channels[channel], docX, docY, 12);
+        if (_curvesDragIndex < 0 && docX is > 0 and < 255)
+        {
+            // insert a new handle at this x
+            var points = Vm.CurvesState.Channels[channel].ToList();
+            points.Add(new CurvePoint(docX, Vm.CurvesState.Value(docX, channel)));
+            points.Sort((a, b) => a.X.CompareTo(b.X));
+            Vm.CurvesState.Channels[channel] = points.ToArray();
+            _curvesDragIndex = points.FindIndex(p => Math.Abs(p.X - docX) < 0.5);
+        }
+
+        e.Pointer.Capture(CurvesCanvas);
+        MoveDraggedPoint(docX, docY);
+    }
+
+    private static int NearestPointIndex(CurvePoint[] points, double x, double y, double maxDist)
+    {
+        var best = -1;
+        var bestDist = maxDist * maxDist;
+        for (var i = 0; i < points.Length; i++)
+        {
+            var dx = points[i].X - x;
+            var dy = points[i].Y - y;
+            var dist = (dx * dx) + (dy * dy);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private void OnCurvesPointerMove(object? sender, PointerEventArgs e)
+    {
+        if (Vm is null || _curvesDragIndex < 0)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(CurvesCanvas);
+        MoveDraggedPoint(Math.Clamp(pos.X, 0, 255), 256 - Math.Clamp(pos.Y, 0, 255));
+    }
+
+    private void MoveDraggedPoint(double x, double y)
+    {
+        if (Vm is null || _curvesDragIndex < 0)
+        {
+            return;
+        }
+
+        var channel = CurvesChannelIndex;
+        var points = Vm.CurvesState.Channels[channel].ToArray();
+        var i = _curvesDragIndex;
+        if (i == 0 || i == points.Length - 1)
+        {
+            // endpoints keep x, move y only
+            points[i] = new CurvePoint(points[i].X, Math.Clamp(y, 0, 255));
+        }
+        else
+        {
+            var minX = points[i - 1].X + 1;
+            var maxX = points[i + 1].X - 1;
+            points[i] = new CurvePoint(Math.Clamp(x, minX, maxX), Math.Clamp(y, 0, 255));
+        }
+
+        Vm.CurvesState.Channels[channel] = points;
+        DrawCurves();
+        Vm.UpdateAdjustmentPreview();
+    }
+
+    private void OnCurvesPointerEnd(object? sender, PointerReleasedEventArgs e)
+    {
+        _curvesDragIndex = -1;
+    }
+
+    private void OnCurvesWheel(object? sender, PointerWheelEventArgs e)
+    {
+        // reserved for fine adjustments; mark handled so the canvas doesn't zoom
+        e.Handled = true;
+    }
+
+    // Hue/Saturation ------------------------------------------------------------
+
+    private bool _hueSatSyncing;
+
+    private void LoadHueSatSliders()
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+
+        _hueSatSyncing = true;
+        HueSlider.Value = Vm.HueSatState.Hue;
+        SatSlider.Value = Vm.HueSatState.Saturation;
+        LightSlider.Value = Vm.HueSatState.Lightness;
+        ColorizeCheck.IsChecked = Vm.HueSatState.Colorize;
+        _hueSatSyncing = false;
+    }
+
+    private void OnHueRangeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (Vm is null || _hueSatSyncing)
+        {
+            return;
+        }
+
+        Vm.HueSatState.Range = (ColorRange)HueRangePicker.SelectedIndex;
+        LoadHueSatSliders();
+        Vm.UpdateAdjustmentPreview();
+    }
+
+    private void OnHueSatSlider(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null || _hueSatSyncing || Vm.OpenAdjustment != EditorViewModel.AdjustmentKind.HueSaturation)
+        {
+            return;
+        }
+
+        Vm.HueSatState.Colorize = ColorizeCheck.IsChecked == true;
+        if (!Vm.HueSatState.Colorize)
+        {
+            Vm.HueSatState.Hue = HueSlider.Value;
+            Vm.HueSatState.Saturation = SatSlider.Value;
+            Vm.HueSatState.Lightness = LightSlider.Value;
+        }
+        else
+        {
+            // colorize uses the raw slider values as its master settings
+            Vm.HueSatState.Hue = HueSlider.Value;
+            Vm.HueSatState.Saturation = SatSlider.Value;
+            Vm.HueSatState.Lightness = LightSlider.Value;
+        }
+
+        Vm.UpdateAdjustmentPreview();
+    }
+
+    // Exposure ------------------------------------------------------------------
+
+    private void OnExposureSlider(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (Vm is null || Vm.OpenAdjustment != EditorViewModel.AdjustmentKind.Exposure)
+        {
+            return;
+        }
+
+        Vm.ExposureState.Exposure = ExposureSlider.Value;
+        Vm.ExposureState.Offset = OffsetSlider.Value;
+        Vm.ExposureState.Gamma = GammaSlider.Value;
+        Vm.UpdateAdjustmentPreview();
+    }
+
+    // Gradient Map ----------------------------------------------------------------
+
+    private void OnGradientMapColor(object? sender, Avalonia.Controls.ColorChangedEventArgs e) => SyncGradientMap();
+
+    private void OnGradientMapReverse(object? sender, RoutedEventArgs e) => SyncGradientMap();
+
+    private void SyncGradientMap()
+    {
+        if (Vm is null || Vm.OpenAdjustment != EditorViewModel.AdjustmentKind.GradientMap)
+        {
+            return;
+        }
+
+        Vm.GradientMapState.Shadows = ToAdjustmentColor(ShadowPicker.Color);
+        Vm.GradientMapState.Highlights = ToAdjustmentColor(HighlightPicker.Color);
+        Vm.GradientMapState.Reversed = ReverseCheck.IsChecked == true;
+        Vm.UpdateAdjustmentPreview();
     }
 }

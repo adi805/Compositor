@@ -129,3 +129,9 @@ Acceptance:
 - Constrained brush (mask multiplies stamp alpha), masked blend for patches
 - Clipboard: copy/cut/paste, FloatingSelection nudge/commit/cancel, single undo step
 - UI: Select menu, tool picker, dashed outline + live draft, floating pixel overlay, Ctrl+A/D/Shift+I/X/C/V, Delete/Enter/Escape
+
+## Adjustments (WS4) - 2026-09-21
+- Levels (+Auto, histogram, eyedropper sampling), Curves (Hermite + editor), Hue/Saturation (band-based, colorize), Exposure, Gradient Map, Invert colors
+- AdjustmentRunner + AdjustmentCommand; preview overlay keyed by generation counter
+- Tests: 128 Core + 49 App = 177 green; smoke OK
+- Known gaps: non-destructive adjustment layers, per-band spectrum UI, async preview pipeline, Grain (→ WS9)

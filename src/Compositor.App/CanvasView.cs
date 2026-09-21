@@ -124,7 +124,9 @@ public sealed class CanvasView : Control, ICustomHitTest
 
             if (layer.Pixels is { } surface)
             {
-                var bitmap = GetBitmap(layer, surface);
+                // Live adjustment preview replaces the active layer's own pixels.
+                var preview = layer == ViewModel.ActiveLayer ? ViewModel.AdjustmentPreviewSurface : null;
+                var bitmap = preview is not null ? GetPreviewBitmap(preview) : GetBitmap(layer, surface);
                 if (bitmap is not null)
                 {
                     context.DrawImage(bitmap, canvasRect);
@@ -355,6 +357,41 @@ public sealed class CanvasView : Control, ICustomHitTest
         ViewModel?.ScreenToDoc(p.X, p.Y, Bounds.Width, Bounds.Height);
 
     /// <summary>Layer pixel preview, rebuilt only when the surface Version moved.</summary>
+    private WriteableBitmap? _previewBitmap;
+    private long _previewGeneration = -1;
+
+    /// <summary>Adjustment preview bitmap, rebuilt only when the preview generation moved.</summary>
+    private WriteableBitmap? GetPreviewBitmap(RasterSurface preview)
+    {
+        var generation = ViewModel?.AdjustmentPreviewGeneration ?? -1;
+        if (_previewBitmap is not null && _previewGeneration == generation)
+        {
+            return _previewBitmap;
+        }
+
+        _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        _previewGeneration = generation;
+        WriteableBitmap bitmap;
+        try
+        {
+            bitmap = new WriteableBitmap(
+                new PixelSize(preview.Width, preview.Height),
+                new Vector(96, 96),
+                PixelFormats.Rgba8888,
+                AlphaFormat.Unpremul);
+            using var fb = bitmap.Lock();
+            Marshal.Copy(preview.Pixels, 0, fb.Address, preview.Pixels.Length);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        _previewBitmap = bitmap;
+        return bitmap;
+    }
+
     private WriteableBitmap? GetBitmap(Layer layer, RasterSurface surface)
     {
         if (_pixelCache.TryGetValue(layer, out var cached))
@@ -472,6 +509,9 @@ public sealed class CanvasView : Control, ICustomHitTest
         }
 
         _pixelCache.Clear();
+        _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        _previewGeneration = -1;
     }
 
     private static Rect Scaled(Rect canvasRect, Document doc, LayerTransform t)
