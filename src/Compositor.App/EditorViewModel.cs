@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Compositor.Core;
+using Compositor.Core.Imaging;
+using Compositor.Core.Project;
 
 namespace Compositor.App;
 
@@ -312,6 +314,192 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         {
             Rows.Add(new LayerRow(Doc.Layers[i]));
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // View transform (zoom/pan). ViewScale 1.0 = fit-to-viewport.
+    // ---------------------------------------------------------------------
+
+    public const double MinViewScale = 0.05;
+    public const double MaxViewScale = 32.0;
+
+    /// <summary>Raised when the view transform changed so the canvas re-renders.</summary>
+    public event Action? ViewChanged;
+
+    private double _viewScale = 1.0;
+    public double ViewScale
+    {
+        get => _viewScale;
+        set
+        {
+            var clamped = Math.Clamp(value, MinViewScale, MaxViewScale);
+            if (Math.Abs(_viewScale - clamped) < 0.0001)
+            {
+                return;
+            }
+
+            _viewScale = clamped;
+            OnPropertyChanged(nameof(ViewScale));
+            ViewChanged?.Invoke();
+        }
+    }
+
+    private double _viewPanX;
+    private double _viewPanY;
+
+    public double ViewPanX
+    {
+        get => _viewPanX;
+        set
+        {
+            if (Math.Abs(_viewPanX - value) < 0.0001)
+            {
+                return;
+            }
+
+            _viewPanX = value;
+            ViewChanged?.Invoke();
+        }
+    }
+
+    public double ViewPanY
+    {
+        get => _viewPanY;
+        set
+        {
+            if (Math.Abs(_viewPanY - value) < 0.0001)
+            {
+                return;
+            }
+
+            _viewPanY = value;
+            ViewChanged?.Invoke();
+        }
+    }
+
+    public void PanBy(double dx, double dy)
+    {
+        ViewPanX += dx;
+        ViewPanY += dy;
+    }
+
+    public void ResetView()
+    {
+        ViewScale = 1.0;
+        ViewPanX = 0;
+        ViewPanY = 0;
+    }
+
+    /// <summary>Document canvas rectangle in control coordinates (fit * scale + pan).</summary>
+    public (double X, double Y, double W, double H) CanvasRect(double viewportW, double viewportH)
+    {
+        if (viewportW <= 0 || viewportH <= 0 || Doc.Width <= 0 || Doc.Height <= 0)
+        {
+            return default;
+        }
+
+        var fit = Math.Min(viewportW / Doc.Width, viewportH / Doc.Height);
+        var scale = fit * _viewScale;
+        var w = Doc.Width * scale;
+        var h = Doc.Height * scale;
+        return ((viewportW - w) / 2 + _viewPanX, (viewportH - h) / 2 + _viewPanY, w, h);
+    }
+
+    /// <summary>Control-space point to document coordinates; null when outside the canvas.</summary>
+    public (float X, float Y)? ScreenToDoc(double sx, double sy, double viewportW, double viewportH)
+    {
+        var r = CanvasRect(viewportW, viewportH);
+        if (r.W <= 0 || sx < r.X || sy < r.Y || sx > r.X + r.W || sy > r.Y + r.H)
+        {
+            return null;
+        }
+
+        return ((float)((sx - r.X) * Doc.Width / r.W), (float)((sy - r.Y) * Doc.Height / r.H));
+    }
+
+    /// <summary>Zooms by a factor keeping the document point under the cursor anchored.</summary>
+    public void ZoomAt(double sx, double sy, double viewportW, double viewportH, double factor)
+    {
+        var r = CanvasRect(viewportW, viewportH);
+        if (r.W <= 0 || r.H <= 0 || factor <= 0)
+        {
+            return;
+        }
+
+        var docU = (sx - r.X) / r.W * Doc.Width;
+        var docV = (sy - r.Y) / r.H * Doc.Height;
+
+        ViewScale = Math.Clamp(_viewScale * factor, MinViewScale, MaxViewScale);
+
+        var fit = Math.Min(viewportW / Doc.Width, viewportH / Doc.Height);
+        var scale = fit * _viewScale;
+        var w = Doc.Width * scale;
+        var h = Doc.Height * scale;
+        _viewPanX = sx - (docU * scale) - ((viewportW - w) / 2);
+        _viewPanY = sy - (docV * scale) - ((viewportH - h) / 2);
+        ViewChanged?.Invoke();
+    }
+
+    // ---------------------------------------------------------------------
+    // File operations. Path-based (no dialogs) so they stay headless-testable;
+    // MainWindow pickers only collect paths and delegate here.
+    // ---------------------------------------------------------------------
+
+    private string? _currentFilePath;
+    public string? CurrentFilePath => _currentFilePath;
+
+    public void SaveProject(string path)
+    {
+        ProjectStore.Save(Doc, path);
+        _currentFilePath = path;
+    }
+
+    public void ExportPng(string path)
+    {
+        var (_, _, rgba) = Flatten.ToRgba(Doc);
+        using var output = File.Create(path);
+        Png.Encode(output, Doc.Width, Doc.Height, rgba);
+    }
+
+    public static EditorViewModel LoadProject(string path)
+    {
+        var doc = ProjectStore.Load(path);
+        return new EditorViewModel(doc) { _currentFilePath = path };
+    }
+
+    /// <summary>Imports a PNG file as a new topmost layer, clipped top-left to the canvas.</summary>
+    public Layer ImportImagePng(string path, string? name = null)
+    {
+        using var input = File.OpenRead(path);
+        var (w, h, rgba) = Png.Decode(input);
+        return ImportRgba(name ?? Path.GetFileNameWithoutExtension(path), w, h, rgba);
+    }
+
+    /// <summary>Imports raw straight-alpha RGBA pixels as a new topmost layer, clipped top-left.</summary>
+    public Layer ImportRgba(string name, int width, int height, byte[] rgba)
+    {
+        ArgumentNullException.ThrowIfNull(rgba);
+        if (width <= 0 || height <= 0 || rgba.Length != width * height * 4)
+        {
+            throw new ArgumentException("Invalid image dimensions or buffer length.");
+        }
+
+        var surface = new RasterSurface(Doc.Width, Doc.Height);
+        var copyW = Math.Min(width, Doc.Width) * 4;
+        var copyH = Math.Min(height, Doc.Height);
+        for (var y = 0; y < copyH; y++)
+        {
+            Array.Copy(rgba, y * width * 4, surface.Pixels, y * Doc.Width * 4, copyW);
+        }
+
+        surface.MarkDirty();
+        var layer = new Layer(name) { Pixels = surface };
+        Doc.AddLayer(layer);
+        Rows.Insert(0, new LayerRow(layer));
+        Selected = Rows[0];
+        OnPropertyChanged(nameof(Title));
+        RaiseDocumentChanged();
+        return layer;
     }
 
     private void OnPropertyChanged(string name) =>

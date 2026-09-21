@@ -1,6 +1,9 @@
+using System.IO;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
+using Compositor.Core;
 
 namespace Compositor.App;
 
@@ -55,22 +58,194 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---------------------------------------------------------------------
+    // View zoom/pan.
+    // ---------------------------------------------------------------------
+
+    private void OnZoomIn(object? sender, RoutedEventArgs e) => ZoomViewport(1.25);
+
+    private void OnZoomOut(object? sender, RoutedEventArgs e) => ZoomViewport(0.8);
+
+    private void OnFitView(object? sender, RoutedEventArgs e) => Vm?.ResetView();
+
+    private void ZoomViewport(double factor)
+    {
+        if (Vm is null || EditorCanvas is null)
+        {
+            return;
+        }
+
+        var b = EditorCanvas.Bounds;
+        Vm.ZoomAt(b.Width / 2, b.Height / 2, b.Width, b.Height, factor);
+    }
+
+    // ---------------------------------------------------------------------
+    // File menu. Pickers only collect paths; all I/O lives in the VM so it
+    // stays headless-testable.
+    // ---------------------------------------------------------------------
+
+    private void OnNew(object? sender, RoutedEventArgs e) => Editor = new EditorViewModel();
+
+    private async void OnOpen(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Open project",
+                AllowMultiple = false,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType("Compositor project") { Patterns = ["*.comp"] },
+                ],
+            });
+            if (files.Count != 1)
+            {
+                return;
+            }
+
+            Editor = EditorViewModel.LoadProject(files[0].Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Open failed: {ex.Message}");
+        }
+    }
+
+    private async void OnSave(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Vm is null)
+            {
+                return;
+            }
+
+            if (Vm.CurrentFilePath is { } existing)
+            {
+                Vm.SaveProject(existing);
+                return;
+            }
+
+            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Save project",
+                DefaultExtension = "comp",
+                FileTypeChoices =
+                [
+                    new FilePickerFileType("Compositor project") { Patterns = ["*.comp"] },
+                ],
+            });
+            if (file is null)
+            {
+                return;
+            }
+
+            Vm.SaveProject(file.Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Save failed: {ex.Message}");
+        }
+    }
+
+    private async void OnImportImage(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Vm is null)
+            {
+                return;
+            }
+
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Import PNG",
+                AllowMultiple = false,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType("PNG image") { Patterns = ["*.png"] },
+                ],
+            });
+            if (files.Count != 1)
+            {
+                return;
+            }
+
+            Vm.ImportImagePng(files[0].Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Import failed: {ex.Message}");
+        }
+    }
+
+    private async void OnExportPng(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Vm is null)
+            {
+                return;
+            }
+
+            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Export PNG",
+                DefaultExtension = "png",
+                SuggestedFileName = $"{Vm.Doc.Name}.png",
+                FileTypeChoices =
+                [
+                    new FilePickerFileType("PNG image") { Patterns = ["*.png"] },
+                ],
+            });
+            if (file is null)
+            {
+                return;
+            }
+
+            Vm.ExportPng(file.Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Export failed: {ex.Message}");
+        }
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            if (e.Key == Key.Z)
+            switch (e.Key)
             {
-                Vm?.Undo();
-                e.Handled = true;
-                return;
-            }
-
-            if (e.Key == Key.Y)
-            {
-                Vm?.Redo();
-                e.Handled = true;
-                return;
+                case Key.Z:
+                    Vm?.Undo();
+                    e.Handled = true;
+                    return;
+                case Key.Y:
+                    Vm?.Redo();
+                    e.Handled = true;
+                    return;
+                case Key.N:
+                    OnNew(this, e);
+                    e.Handled = true;
+                    return;
+                case Key.O:
+                    OnOpen(this, e);
+                    e.Handled = true;
+                    return;
+                case Key.S:
+                    OnSave(this, e);
+                    e.Handled = true;
+                    return;
+                case Key.I:
+                    OnImportImage(this, e);
+                    e.Handled = true;
+                    return;
+                case Key.E:
+                    OnExportPng(this, e);
+                    e.Handled = true;
+                    return;
             }
         }
 

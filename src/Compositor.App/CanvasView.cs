@@ -47,6 +47,7 @@ public sealed class CanvasView : Control, ICustomHitTest
     private readonly Dictionary<Layer, (WriteableBitmap Bitmap, long Version)> _pixelCache = new();
     private readonly List<LayerRow> _attachedRows = new();
     private EditorViewModel? _attached;
+    private Point? _panLast;
 
     public CanvasView()
     {
@@ -72,6 +73,7 @@ public sealed class CanvasView : Control, ICustomHitTest
             {
                 _attached.DocumentChanged += OnDocumentChanged;
                 _attached.Rows.CollectionChanged += OnRowsChanged;
+                _attached.ViewChanged += OnViewChanged;
                 AttachRows();
             }
 
@@ -89,7 +91,8 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
-        var canvasRect = FitRect(bounds, ViewModel.Doc.Width, ViewModel.Doc.Height);
+        var (crX, crY, crW, crH) = ViewModel.CanvasRect(bounds.Width, bounds.Height);
+        var canvasRect = new Rect(crX, crY, crW, crH);
         if (canvasRect.Width <= 0 || canvasRect.Height <= 0)
         {
             return;
@@ -148,6 +151,15 @@ public sealed class CanvasView : Control, ICustomHitTest
         }
 
         var point = e.GetCurrentPoint(this);
+        if (point.Properties.IsMiddleButtonPressed)
+        {
+            // Start a view pan; stroke painting stays on the left button.
+            _panLast = e.GetPosition(this);
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
         if (!point.Properties.IsLeftButtonPressed)
         {
             return;
@@ -170,7 +182,21 @@ public sealed class CanvasView : Control, ICustomHitTest
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (ViewModel?.IsStrokeActive != true)
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        if (_panLast is { } last && e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
+        {
+            var pos = e.GetPosition(this);
+            ViewModel.PanBy(pos.X - last.X, pos.Y - last.Y);
+            _panLast = pos;
+            e.Handled = true;
+            return;
+        }
+
+        if (!ViewModel.IsStrokeActive)
         {
             return;
         }
@@ -194,6 +220,14 @@ public sealed class CanvasView : Control, ICustomHitTest
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        if (_panLast is not null)
+        {
+            _panLast = null;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
+
         if (ViewModel?.IsStrokeActive != true)
         {
             return;
@@ -206,24 +240,8 @@ public sealed class CanvasView : Control, ICustomHitTest
     }
 
     /// <summary>Control-space point to document coordinates; null when outside the canvas.</summary>
-    private (float X, float Y)? ToDocCoords(Point p)
-    {
-        if (ViewModel is null)
-        {
-            return null;
-        }
-
-        var rect = FitRect(new Rect(Bounds.Size), ViewModel.Doc.Width, ViewModel.Doc.Height);
-        if (rect.Width <= 0 || rect.Height <= 0 ||
-            p.X < rect.X || p.Y < rect.Y || p.X > rect.Right || p.Y > rect.Bottom)
-        {
-            return null;
-        }
-
-        return (
-            (float)((p.X - rect.X) * ViewModel.Doc.Width / rect.Width),
-            (float)((p.Y - rect.Y) * ViewModel.Doc.Height / rect.Height));
-    }
+    private (float X, float Y)? ToDocCoords(Point p) =>
+        ViewModel?.ScreenToDoc(p.X, p.Y, Bounds.Width, Bounds.Height);
 
     /// <summary>Layer pixel preview, rebuilt only when the surface Version moved.</summary>
     private WriteableBitmap? GetBitmap(Layer layer, RasterSurface surface)
@@ -304,6 +322,24 @@ public sealed class CanvasView : Control, ICustomHitTest
         InvalidateVisual();
     }
 
+    private void OnViewChanged()
+    {
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(this);
+        ViewModel.ZoomAt(pos.X, pos.Y, Bounds.Width, Bounds.Height, e.Delta.Y > 0 ? 1.25 : 0.8);
+        e.Handled = true;
+    }
+
     private void Detach()
     {
         DetachRows();
@@ -314,6 +350,7 @@ public sealed class CanvasView : Control, ICustomHitTest
 
         _attached.DocumentChanged -= OnDocumentChanged;
         _attached.Rows.CollectionChanged -= OnRowsChanged;
+        _attached.ViewChanged -= OnViewChanged;
         _attached = null;
         foreach (var entry in _pixelCache.Values)
         {
@@ -321,19 +358,6 @@ public sealed class CanvasView : Control, ICustomHitTest
         }
 
         _pixelCache.Clear();
-    }
-
-    private static Rect FitRect(Rect bounds, int docWidth, int docHeight)
-    {
-        if (bounds.Width <= 0 || bounds.Height <= 0 || docWidth <= 0 || docHeight <= 0)
-        {
-            return default;
-        }
-
-        var scale = Math.Min(bounds.Width / docWidth, bounds.Height / docHeight);
-        var w = docWidth * scale;
-        var h = docHeight * scale;
-        return new Rect((bounds.Width - w) / 2, (bounds.Height - h) / 2, w, h);
     }
 
     private static Rect Scaled(Rect canvasRect, Document doc, LayerTransform t)
