@@ -21,15 +21,23 @@ This repo rebuilds Compositor as a cross-platform .NET 8 application:
 
 Goal: same document model, same editing semantics, compatible file format. Not a UI clone.
 
-## Current status
+## Current status (v0.2)
+
+**Working today:**
 
 - **Document model**: layers (bottom-to-top), UUIDs, transform block, 9 upstream blend modes, opacity, visibility, lock.
 - **Project files**: single-file zip `.comp` (`manifest.json` + `images/<uuid>.png`), atomic replace, full validation (30k px/side, 100 M px, 10k layers, 4 MiB manifest, unsafe-entry rejection). Byte-identical round-trip is test-enforced.
-- **Raster engine**: RGBA8 surfaces, soft round brush (spacing + stroke-opacity cap, per upstream `brush-performance.md`), undo/redo with exact pixel restoration.
-- **UI shell (Avalonia)**: editor window with canvas (checkerboard + layer rects) and layers panel (add, delete, reorder, visibility, selection).
-- **CI**: GitHub Actions on every push; 69 tests.
+- **Painting**: left-drag on canvas paints the active layer (soft round brush, spacing + stroke-opacity cap per upstream `brush-performance.md`). Click = dot. Undo/redo is per-stroke with exact pixel restoration.
+- **Files**: File menu with New (Ctrl+N), Open/Save `.comp` (Ctrl+O/S), Import PNG as layer (Ctrl+I), Export flattened PNG (Ctrl+E). Pickers collect paths only; all I/O is in the testable view-model.
+- **View**: wheel zoom anchored at the cursor (Ctrl-free), middle-drag pan, zoom % readout, Fit button (resets to fit).
+- **Layers panel**: add, delete, reorder, visibility, selection.
+- **CI**: GitHub Actions on every push; 86 tests (52 core + 34 app incl. headless UI).
 
-Not usable as a daily editor yet: file dialogs, zoom/pan, and painting-tool polish are next. See `docs/ROADMAP.md`.
+**Known limits (v0.2):**
+
+- Export composites Normal blend only (opacity + visibility respected); other blend modes await raster kernels.
+- Import is PNG-only, clipped top-left to the canvas.
+- Import of JPG/WEBP, selections, text, and brush size dynamics are next. See `docs/ROADMAP.md`.
 
 ## Building and running
 
@@ -43,10 +51,10 @@ dotnet build Compositor.Windows.sln
 dotnet test Compositor.Windows.sln
 
 # headless smoke (console): document round-trip check
-dotnet run --project src/Compositor.App
+dotnet run --project src/Compositor.App -- --smoke
 
 # open the editor window
-dotnet run --project src/Compositor.App -- --ui
+dotnet run --project src/Compositor.App
 ```
 
 On Windows the same commands work; the app is a plain .NET desktop app (no MSIX, no Windows App SDK).
