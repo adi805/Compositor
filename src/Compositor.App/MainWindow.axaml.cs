@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -447,6 +448,112 @@ public partial class MainWindow : Window
     }
 
     private void OnInvertColors(object? sender, RoutedEventArgs e) => Vm?.ApplyInvert();
+
+    // Geometry sheets: image size / canvas size / crop -------------------------
+
+    private void ShowGeometrySheet(string title, params Avalonia.Controls.Control[] toShow)
+    {
+        GeometryTitle.Text = title;
+        GeometryPanel.IsVisible = true;
+        ImageSizeControls.IsVisible = false;
+        CanvasSizeControls.IsVisible = false;
+        CropControls.IsVisible = false;
+        foreach (var control in toShow)
+        {
+            control.IsVisible = true;
+        }
+    }
+
+    private static bool TryParseInt(string? text, out int value) => int.TryParse(text?.Trim(), out value);
+
+    private void OnImageSize(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+        ImageSizeW.Text = Vm.Doc.Width.ToString(CultureInfo.InvariantCulture);
+        ImageSizeH.Text = Vm.Doc.Height.ToString(CultureInfo.InvariantCulture);
+        ImageSizeDpi.Text = Vm.Doc.Resolution.ToString("0.#", CultureInfo.InvariantCulture);
+        ShowGeometrySheet("Image Size", ImageSizeControls);
+    }
+
+    private void OnImageSizeApply(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null
+            || !TryParseInt(ImageSizeW.Text, out var w)
+            || !TryParseInt(ImageSizeH.Text, out var h)
+            || !double.TryParse(ImageSizeDpi.Text?.Trim(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var dpi))
+        {
+            return;
+        }
+        if (Vm.ApplyImageSize(w, h, dpi))
+        {
+            GeometryPanel.IsVisible = false;
+        }
+    }
+
+    private void OnCanvasSize(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+        CanvasSizeW.Text = Vm.Doc.Width.ToString(CultureInfo.InvariantCulture);
+        CanvasSizeH.Text = Vm.Doc.Height.ToString(CultureInfo.InvariantCulture);
+        CanvasAnchorPicker.SelectedIndex = 4;
+        ShowGeometrySheet("Canvas Size", CanvasSizeControls);
+    }
+
+    private void OnCanvasSizeApply(object? sender, RoutedEventArgs e)
+    {
+        var anchor = CanvasAnchorPicker.SelectedIndex;
+        if (Vm is null
+            || !TryParseInt(CanvasSizeW.Text, out var w)
+            || !TryParseInt(CanvasSizeH.Text, out var h)
+            || anchor < 0)
+        {
+            return;
+        }
+        (byte, byte, byte)? fill = CanvasFillCheck.IsChecked == true ? ((byte)255, (byte)255, (byte)255) : null;
+        if (Vm.ApplyCanvasSize(w, h, anchor, fill))
+        {
+            GeometryPanel.IsVisible = false;
+        }
+    }
+
+    private void OnCropSheet(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null)
+        {
+            return;
+        }
+        CropX.Text = "0";
+        CropY.Text = "0";
+        CropW.Text = Vm.Doc.Width.ToString(CultureInfo.InvariantCulture);
+        CropH.Text = Vm.Doc.Height.ToString(CultureInfo.InvariantCulture);
+        ShowGeometrySheet("Crop", CropControls);
+    }
+
+    private void OnCropApply(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null
+            || !TryParseInt(CropX.Text, out var x)
+            || !TryParseInt(CropY.Text, out var y)
+            || !TryParseInt(CropW.Text, out var w)
+            || !TryParseInt(CropH.Text, out var h))
+        {
+            return;
+        }
+        if (Vm.ApplyCrop(x, y, w, h))
+        {
+            GeometryPanel.IsVisible = false;
+        }
+    }
+
+    private void OnCropToSelection(object? sender, RoutedEventArgs e) => Vm?.ApplyCropToSelection();
+
+    private void OnGeometryClose(object? sender, RoutedEventArgs e) => GeometryPanel.IsVisible = false;
 
     // Levels ------------------------------------------------------------------
 

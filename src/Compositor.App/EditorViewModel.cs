@@ -526,6 +526,112 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// <summary>Appearance editing targets a single selected, non-group layer (upstream canEditAppearance).</summary>
     public bool CanEditAppearance => Selected is { } row && !row.Layer.IsGroup;
 
+    // --- Geometry: canvas size / image size / crop (upstream CanvasResizer/ImageResizer/Crop) ---
+
+    /// <summary>Canvas Size with an anchor 0..8 and optional extension fill. False when rejected.</summary>
+    public bool ApplyCanvasSize(int newWidth, int newHeight, int anchor, (byte R, byte G, byte B)? fill)
+    {
+        CanvasResizeCommand command;
+        try
+        {
+            command = CanvasResizeCommand.AnchorResize(Doc, newWidth, newHeight, anchor, fill);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+        PushAndRefresh(command);
+        OnPropertyChanged(nameof(Title));
+        return true;
+    }
+
+    /// <summary>Image Size resample with DPI. False when rejected.</summary>
+    public bool ApplyImageSize(int newWidth, int newHeight, double resolution)
+    {
+        ImageSizeCommand command;
+        try
+        {
+            command = new ImageSizeCommand(Doc, newWidth, newHeight, resolution);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+        PushAndRefresh(command);
+        OnPropertyChanged(nameof(Title));
+        return true;
+    }
+
+    /// <summary>Crop to the given document-space rectangle. False when rejected.</summary>
+    public bool ApplyCrop(int x, int y, int width, int height)
+    {
+        CanvasResizeCommand command;
+        try
+        {
+            command = CanvasResizeCommand.Crop(Doc, x, y, width, height);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+        PushAndRefresh(command);
+        OnPropertyChanged(nameof(Title));
+        return true;
+    }
+
+    /// <summary>
+    /// Pixel bounds of the current selection (union of shape rects/points,
+    /// floored and clamped to the canvas) for Crop-to-Selection. Null when none.
+    /// </summary>
+    public (int X, int Y, int Width, int Height)? SelectionPixelBounds()
+    {
+        if (Doc.Selection is not { } selection || selection.IsEmpty || selection.Shapes.Count == 0)
+        {
+            return null;
+        }
+        var minX = float.MaxValue;
+        var minY = float.MaxValue;
+        var maxX = float.MinValue;
+        var maxY = float.MinValue;
+        foreach (var shape in selection.Shapes)
+        {
+            if (shape.Points.Count > 0)
+            {
+                foreach (var (px, py) in shape.Points)
+                {
+                    minX = MathF.Min(minX, px);
+                    minY = MathF.Min(minY, py);
+                    maxX = MathF.Max(maxX, px);
+                    maxY = MathF.Max(maxY, py);
+                }
+                continue;
+            }
+            minX = MathF.Min(minX, shape.X);
+            minY = MathF.Min(minY, shape.Y);
+            maxX = MathF.Max(maxX, shape.X + shape.Width);
+            maxY = MathF.Max(maxY, shape.Y + shape.Height);
+        }
+        if (minX > maxX || minY > maxY)
+        {
+            return null;
+        }
+        var x0 = Math.Clamp((int)MathF.Floor(minX), 0, Doc.Width - 1);
+        var y0 = Math.Clamp((int)MathF.Floor(minY), 0, Doc.Height - 1);
+        var x1 = Math.Clamp((int)MathF.Ceiling(maxX), 1, Doc.Width);
+        var y1 = Math.Clamp((int)MathF.Ceiling(maxY), 1, Doc.Height);
+        return (x0, y0, x1 - x0, y1 - y0);
+    }
+
+    /// <summary>Crop to the current selection bounds. False when there is no selection.</summary>
+    public bool ApplyCropToSelection()
+    {
+        if (SelectionPixelBounds() is not { } rect)
+        {
+            return false;
+        }
+        return ApplyCrop(rect.X, rect.Y, rect.Width, rect.Height);
+    }
+
     private void PushAndRefresh(IUndoCommand command)
     {
         History.Push(command);

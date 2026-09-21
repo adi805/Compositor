@@ -51,6 +51,13 @@
         <Separator />
         <MenuItem Header="In_vert colors" Click="OnInvertColors" />
       </MenuItem>
+      <MenuItem Header="Ima_ge">
+        <MenuItem Header="_Image Size..." Click="OnImageSize" />
+        <MenuItem Header="_Canvas Size..." Click="OnCanvasSize" />
+        <Separator />
+        <MenuItem Header="_Crop..." Click="OnCropSheet" />
+        <MenuItem Header="Crop to Se_lection" Click="OnCropToSelection" />
+      </MenuItem>
     </Menu>
     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,4,8,4">
       <ComboBox x:Name="ToolPicker" Width="130" SelectedIndex="0" ToolTip.Tip="Tool"
@@ -157,6 +164,68 @@
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
               <Button x:Name="AdjustmentOk" Content="OK" Click="OnAdjustmentOk" />
               <Button x:Name="AdjustmentCancel" Content="Cancel" Click="OnAdjustmentCancel" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <Border x:Name="GeometryPanel" Background="#E6202020" CornerRadius="8"
+                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="12" Padding="14" Width="340" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="GeometryTitle" FontWeight="Bold" />
+            <!-- Image Size -->
+            <StackPanel x:Name="ImageSizeControls" Spacing="6" IsVisible="False">
+              <Grid ColumnDefinitions="Auto,*,Auto,*">
+                <TextBlock Grid.Column="0" Text="Width" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" x:Name="ImageSizeW" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="2" Text="Height" VerticalAlignment="Center" />
+                <TextBox Grid.Column="3" x:Name="ImageSizeH" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="Resolution (DPI)" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" x:Name="ImageSizeDpi" Margin="8,0,0,0" />
+              </Grid>
+              <Button Content="Resize image" Click="OnImageSizeApply" />
+            </StackPanel>
+            <!-- Canvas Size -->
+            <StackPanel x:Name="CanvasSizeControls" Spacing="6" IsVisible="False">
+              <Grid ColumnDefinitions="Auto,*,Auto,*">
+                <TextBlock Grid.Column="0" Text="Width" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" x:Name="CanvasSizeW" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="2" Text="Height" VerticalAlignment="Center" />
+                <TextBox Grid.Column="3" x:Name="CanvasSizeH" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="Anchor" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" x:Name="CanvasAnchorPicker" Margin="8,0,0,0"
+                          SelectedIndex="4" HorizontalAlignment="Left" MinWidth="130">
+                  <ComboBoxItem>Top-left</ComboBoxItem><ComboBoxItem>Top</ComboBoxItem>
+                  <ComboBoxItem>Top-right</ComboBoxItem><ComboBoxItem>Left</ComboBoxItem>
+                  <ComboBoxItem>Center</ComboBoxItem><ComboBoxItem>Right</ComboBoxItem>
+                  <ComboBoxItem>Bottom-left</ComboBoxItem><ComboBoxItem>Bottom</ComboBoxItem>
+                  <ComboBoxItem>Bottom-right</ComboBoxItem>
+                </ComboBox>
+              </Grid>
+              <CheckBox x:Name="CanvasFillCheck" Content="Extend with white fill" />
+              <Button Content="Resize canvas" Click="OnCanvasSizeApply" />
+            </StackPanel>
+            <!-- Crop -->
+            <StackPanel x:Name="CropControls" Spacing="6" IsVisible="False">
+              <Grid ColumnDefinitions="Auto,*,Auto,*">
+                <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" x:Name="CropX" Margin="0,0,8,0" Text="0" />
+                <TextBlock Grid.Column="2" Text="Y" VerticalAlignment="Center" />
+                <TextBox Grid.Column="3" x:Name="CropY" Text="0" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*,Auto,*">
+                <TextBlock Grid.Column="0" Text="Width" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" x:Name="CropW" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="2" Text="Height" VerticalAlignment="Center" />
+                <TextBox Grid.Column="3" x:Name="CropH" />
+              </Grid>
+              <Button Content="Crop" Click="OnCropApply" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="GeometryClose" Content="Close" Click="OnGeometryClose" />
             </StackPanel>
           </StackPanel>
         </Border>

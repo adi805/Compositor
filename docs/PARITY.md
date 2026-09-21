@@ -27,7 +27,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | SelectionEdits.swift | 205 | partial | Constrained paint + masked blend (WS3) |
 | SelectionClipboard.swift | 204 | done | Copy/cut/paste via selection, floating commit as one undo step |
 | EditorSession+Brush.swift | 201 | partial | VM wiring brush ada; belum parameter lengkap |
-| Crop.swift | 199 | missing | WS6 |
+| Crop.swift | 199 | done | WS6: CropCommand via contentOffset + CropGeometry.valid + crop-to-selection; drag-tool visual di WS8 |
 | LayerGroups.swift | 190 | partial | WS5: hierarchy entries/validate/visible, group selected + new folder + reorder undo-able, indent rows; drag-reorder di panel belum |
 | FloatingSelection.swift | 159 | partial | Floating overlay + nudge/commit/cancel; no drag-move yet |
 | ShapeTool.swift | 157 | missing | WS8 |
@@ -42,7 +42,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | MaskTracing.swift | 92 | missing | WS5 |
 | LayerAppearance.swift | 88 | partial | Blend enum 9/13 mode, opacity ada; 4 mode non-separable + UI picker belum (WS2/WS5) |
 | LevelsAutomatic.swift | 84 | done | WS4: contrast/color/neutral + eyedropper sampling |
-| CanvasSize.swift | 82 | missing | WS6 |
+| CanvasSize.swift | 82 | done | WS6: CanvasSizeDraft units math ada di Core (anchor formula + caps); UI pixels-mode |
 | LayerFlip.swift | 79 | missing | WS5 |
 | LayerMerge.swift | 72 | missing | WS5 |
 | PixelAdjust.swift | 65 | partial | WS4: selection blend + coverage ported; CI infra n/a |
@@ -60,8 +60,8 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | ProjectController.swift | 299 | partial | ProjectStore kita (zip .comp, atomic, validasi) |
 | ProjectStore.swift | 225 | done | Round-trip teruji; format v1 kita sendiri, referensi skema upstream v6 |
 | ImageExporter.swift | 146 | partial | PNG flatten Normal-only; butuh per-layer blend (WS2), JPEG + cap 100MP + DPI (WS10) |
-| ImageResizer.swift | 117 | missing | WS6 |
-| CanvasResizer.swift | 72 | missing | WS6 |
+| ImageResizer.swift | 117 | done | WS6: ImageSizeCommand (transform scale + bilinear resample + caps), resolution di manifest |
+| CanvasResizer.swift | 72 | done | WS6: CanvasResizeCommand (anchor offsets, fill extension layer, non-destructive) |
 | ImageImporter.swift | 63 | partial | PNG only |
 | ImageFileDrop.swift | 55 | missing | WS10 |
 | CompositorApplicationDelegate.swift | 43 | n/a | Lifecycle Mac |
@@ -95,9 +95,9 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | FilterSheet (163) | missing | WS9 |
 | LevelsSheet (144) | missing | WS4 |
 | LassoControls (128) | missing | WS3 |
-| ImageSizeSheet (120) | missing | WS6 |
+| ImageSizeSheet (120) | partial | WS6: sheet pixels-mode + DPI (anchor picker 9 opsi); units inches/cm/percent + relative/locked belum di UI |
 | BrushControls (120) | partial | Size + 5 warna; belum hardness/flow/opacity kuas |
-| CanvasSizeSheet (113) | missing | WS6 |
+| CanvasSizeSheet (113) | partial | WS6: sama seperti ImageSizeSheet |
 | TransformInspector (112) | missing | WS5 |
 | GradientControls (103) | missing | WS8 |
 | FloatingPanel (101) | n/a-ish | Pola UI; adaptif per platform |
@@ -114,7 +114,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | ShapeControls (49) | missing | WS8 |
 | SliderSnap (42) | missing | WS10 |
 | ToolHeaderStyle (26) | partial | |
-| CropControls (24) | missing | WS6 |
+| CropControls (24) | partial | WS6: crop numeric sheet + crop-to-selection; visual drag frame + snap + ratio di WS8 |
 | LayerMaskMenu (14) | missing | WS5 |
 
 ## Ringkasan
@@ -140,3 +140,14 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - Format: manifest v2 (+parentUUID/isGroup); app v0.2 nolak file baru dengan pesan jelas
 - BUG FIX bawaan: ProjectStore.Save bocor stream image entry kedua dst (multi-image save selalu crash "entries still open") - kelihatan pertama kali karena test lama maksimal 1 layer berpixel
 - Tests: 20 Core + 9 App; total 207 (148 Core + 59 App)
+
+## WS6 - Geometry ops - 2026-09-21
+- CanvasResizeCommand: 9-anchor offset formula persis upstream (floor((delta)*(anchor%3)/2)), shift semua layer origin, pixel non-destruktif; optional fill = bottom layer "Canvas Extension" dengan hole transparan di rect canvas lama (upstream context.clear)
+- Crop = CanvasResize dengan contentOffset (-rect.origin), validasi CropGeometry.valid (1..30000, origin<=1e6); Crop-to-Selection via union bounds shape
+- ImageSizeCommand: skala transform (origin+size, rotasi dipertahankan), resample bilinear surface ke size baru; same-dims = resolution-only; cap 100MP + dims 1..30000 + DPI 1..9600
+- ResampleBilinear: half-pixel-center, edge clamp, straight-alpha per channel
+- Document.SetSize + Resolution (default 72) + manifest field "resolution" (additive v2, optional, default saat load)
+- BUG FIX: CoversCanvas layer dengan pixel (hasil BeginStroke yang materialisasi pixel tanpa update transform) sekarang ikut resample ke canvas baru - sebelumnya pixel-nya stale
+- UI: menu Image (Image Size/Canvas Size/Crop/Crop to Selection), floating GeometryPanel (W/H/DPI, anchor picker 9 opsi, fill checkbox, crop X/Y/W/H)
+- Tests: 24 Core + 10 App; total 242 (172 Core + 70 App)
+- Partial vs upstream: units (percent/inches/cm) + relative/locked di CanvasSizeDraft belum di-UI (math units-nya sugar di atas op pixel yang lengkap); visual drag-crop tool nunggu WS8 tools

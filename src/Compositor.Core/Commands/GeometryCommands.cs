@@ -201,7 +201,14 @@ public sealed class ImageSizeCommand : IUndoCommand
             var t = layer.Transform;
             if (t.CoversCanvas)
             {
+                // Cover-canvas layers stretch with the canvas. Painted ones
+                // (BeginStroke materializes pixels but leaves the transform)
+                // must also resample to the new canvas size.
                 layer.Transform = LayerTransform.ForCanvas(_newWidth, _newHeight);
+                if (layer.Pixels is { } cover && (cover.Width != _newWidth || cover.Height != _newHeight))
+                {
+                    layer.Pixels = SurfaceOps.ResampleBilinear(cover, _newWidth, _newHeight);
+                }
                 continue;
             }
             var w = Math.Max(1, (int)Math.Round(t.Width * sx, MidpointRounding.AwayFromZero));
