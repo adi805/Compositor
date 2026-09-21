@@ -14,13 +14,22 @@ public partial class MainWindow : Window
     public EditorViewModel? Editor
     {
         get => _viewModel ??= DataContext as EditorViewModel;
-        set { _viewModel = value; DataContext = value; }
+        set
+        {
+            _viewModel = value;
+            DataContext = value;
+            if (BlendPicker is not null)
+            {
+                BlendPicker.ItemsSource = Enum.GetValues<Core.BlendMode>();
+            }
+        }
     }
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = new EditorViewModel();
+        BlendPicker.ItemsSource = Enum.GetValues<Core.BlendMode>();
     }
 
     public MainWindow(EditorViewModel viewModel) : this()
@@ -29,6 +38,14 @@ public partial class MainWindow : Window
     }
 
     private EditorViewModel? Vm => DataContext as EditorViewModel;
+
+    private void OnGroupLayers(object? sender, RoutedEventArgs e) => Vm?.GroupSelected();
+    private void OnAddFolder(object? sender, RoutedEventArgs e) => Vm?.AddGroup();
+    private void OnMergeDown(object? sender, RoutedEventArgs e) => Vm?.MergeDown();
+    private void OnFlipH(object? sender, RoutedEventArgs e) => Vm?.FlipActive(horizontally: true);
+    private void OnFlipV(object? sender, RoutedEventArgs e) => Vm?.FlipActive(horizontally: false);
+    private void OnFlipCanvasH(object? sender, RoutedEventArgs e) => Vm?.FlipCanvas(horizontally: true);
+    private void OnFlipCanvasV(object? sender, RoutedEventArgs e) => Vm?.FlipCanvas(horizontally: false);
 
     private void OnAddLayer(object? sender, RoutedEventArgs e) => Vm?.AddLayer();
 
@@ -221,6 +238,14 @@ public partial class MainWindow : Window
             {
                 case Key.Z:
                     Vm?.Undo();
+                    e.Handled = true;
+                    return;
+                case Key.G:
+                    Vm?.GroupSelected();
+                    e.Handled = true;
+                    return;
+                case Key.M:
+                    Vm?.MergeDown();
                     e.Handled = true;
                     return;
                 case Key.Y:

@@ -266,6 +266,51 @@ public sealed class MergeLayersCommand : IUndoCommand
     }
 }
 
+/// <summary>Inserts a new group node at a stack position, removable via undo (upstream addGroup).</summary>
+public sealed class AddGroupCommand : IUndoCommand
+{
+    private readonly Document _doc;
+    private readonly Layer _group;
+    private readonly int _index;
+
+    public AddGroupCommand(Document doc, Layer group, int index)
+    {
+        _doc = doc ?? throw new ArgumentNullException(nameof(doc));
+        _group = group ?? throw new ArgumentNullException(nameof(group));
+        if (!group.IsGroup)
+        {
+            throw new ArgumentException("Only group layers can be inserted by this command.", nameof(group));
+        }
+        _index = Math.Clamp(index, 0, doc.Layers.Count);
+    }
+
+    public void Redo() => _doc.Layers.Insert(Math.Min(_index, _doc.Layers.Count), _group);
+    public void Undo() => _doc.Layers.Remove(_group);
+}
+
+/// <summary>Sets one layer's placement (position, size, rotation, flips), restoring the previous placement on undo.</summary>
+public sealed class SetLayerTransformCommand : IUndoCommand
+{
+    private readonly Layer _layer;
+    private readonly LayerTransform _oldTransform;
+    private readonly LayerTransform _newTransform;
+
+    public SetLayerTransformCommand(Layer layer, LayerTransform newTransform)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+        if (!newTransform.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(newTransform), "Transform is not valid.");
+        }
+        _layer = layer;
+        _oldTransform = layer.Transform;
+        _newTransform = newTransform;
+    }
+
+    public void Redo() => _layer.Transform = _newTransform;
+    public void Undo() => _layer.Transform = _oldTransform;
+}
+
 /// <summary>
 /// Bakes a horizontal (or vertical) mirror into one layer's pixels and toggles
 /// its transform flip flags to match, restoring the previous surface on undo.

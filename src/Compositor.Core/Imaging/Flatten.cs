@@ -16,7 +16,8 @@ public static class Flatten
         ArgumentNullException.ThrowIfNull(doc);
         var output = new byte[doc.Width * doc.Height * 4];
 
-        foreach (var layer in doc.Layers) // bottom-first
+        // Hierarchy-aware: hidden groups hide their subtree; groups carry no pixels.
+        foreach (var layer in LayerHierarchy.VisibleLayers(doc.Layers)) // bottom-first
         {
             if (!layer.IsVisible || layer.Pixels is not { } src)
             {

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Compositor.Core;
 using Compositor.Core.Adjustments;
+using Compositor.Core.Commands;
 using Compositor.Core.Imaging;
 using Compositor.Core.Project;
 using Compositor.Core.Selection;
@@ -483,17 +484,18 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         // Capture before rebuilding: clearing Rows can reset the ListBox
         // selection, which would push Selected = null back through binding.
         var selectedId = _selected.Id;
-        var index = Doc.Layers.IndexOf(_selected.Layer);
+        var layer = _selected.Layer;
+        var index = Doc.Layers.IndexOf(layer);
         var target = index + docIndexDelta;
         if (index < 0 || target < 0 || target >= Doc.Layers.Count)
         {
             return;
         }
 
-        Doc.Layers.RemoveAt(index);
-        Doc.Layers.Insert(target, _selected.Layer);
+        History.Push(new ReorderLayerCommand(Doc, layer, target));
         RebuildRows();
         Selected = Rows.FirstOrDefault(r => r.Id == selectedId);
+        OnHistoryChanged();
         RaiseDocumentChanged();
     }
 
@@ -502,11 +504,173 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     private void RebuildRows()
     {
         Rows.Clear();
-        for (var i = Doc.Layers.Count - 1; i >= 0; i--)
+        // Top-first UI order over the hierarchy; groups render as indented rows.
+        var entries = LayerHierarchy.Entries(Doc.Layers);
+        for (var i = entries.Count - 1; i >= 0; i--)
         {
-            Rows.Add(new LayerRow(Doc.Layers[i]));
+            var row = new LayerRow(entries[i].Layer) { Depth = entries[i].Depth };
+            row.LayerChanged += OnRowChanged;
+            Rows.Add(row);
         }
     }
+
+    private void OnRowChanged(LayerRow row)
+    {
+        RaiseDocumentChanged();
+    }
+
+    // ---------------------------------------------------------------------
+    // Layer power: appearance editing, groups, merge, flip (parity WS5).
+    // ---------------------------------------------------------------------
+
+    /// <summary>Appearance editing targets a single selected, non-group layer (upstream canEditAppearance).</summary>
+    public bool CanEditAppearance => Selected is { } row && !row.Layer.IsGroup;
+
+    private void PushAndRefresh(IUndoCommand command)
+    {
+        History.Push(command);
+        RebuildRows();
+        Selected = Rows.FirstOrDefault(r => r.Id == Selected?.Id) ?? Selected;
+        OnHistoryChanged();
+        RaiseDocumentChanged();
+    }
+
+    public double ActiveOpacity
+    {
+        get => ActiveLayer?.Opacity ?? 1.0;
+        set
+        {
+            if (ActiveLayer is not { } layer || !double.IsFinite(value))
+            {
+                return;
+            }
+            var clamped = Math.Clamp(value, 0.0, 1.0);
+            if (Math.Abs(layer.Opacity - clamped) < 0.0001)
+            {
+                return;
+            }
+            PushAndRefresh(new SetLayerAppearanceCommand(layer, null, clamped));
+            OnPropertyChanged(nameof(ActiveOpacity));
+        }
+    }
+
+    public BlendMode ActiveBlend
+    {
+        get => ActiveLayer?.Blend ?? BlendMode.Normal;
+        set
+        {
+            if (ActiveLayer is not { } layer || layer.Blend == value)
+            {
+                return;
+            }
+            PushAndRefresh(new SetLayerAppearanceCommand(layer, value, null));
+            OnPropertyChanged(nameof(ActiveBlend));
+        }
+    }
+
+    /// <summary>Scale of the active layer as a percentage of its pixel size (100 = 1:1).</summary>
+    public double ActiveScalePercent
+    {
+        get
+        {
+            if (ActiveLayer is not { } layer)
+            {
+                return 100.0;
+            }
+            var pw = layer.Pixels?.Width ?? Doc.Width;
+            return Math.Round(layer.Transform.Width / Math.Max(1, pw) * 100.0, 1, MidpointRounding.AwayFromZero);
+        }
+        set
+        {
+            if (ActiveLayer is not { } layer || !double.IsFinite(value) || value <= 0)
+            {
+                return;
+            }
+            var pw = layer.Pixels?.Width ?? Doc.Width;
+            var ph = layer.Pixels?.Height ?? Doc.Height;
+            var next = layer.Transform.Scaled(value, pw, ph).Rounded();
+            if (next == layer.Transform)
+            {
+                return;
+            }
+            PushAndRefresh(new SetLayerTransformCommand(layer, next));
+            OnPropertyChanged(nameof(ActiveScalePercent));
+        }
+    }
+
+    public double ActiveRotation
+    {
+        get => ActiveLayer?.Transform.RotationDegrees ?? 0.0;
+        set
+        {
+            if (ActiveLayer is not { } layer || !double.IsFinite(value))
+            {
+                return;
+            }
+            var next = layer.Transform with { RotationDegrees = value };
+            if (next == layer.Transform)
+            {
+                return;
+            }
+            PushAndRefresh(new SetLayerTransformCommand(layer, next));
+            OnPropertyChanged(nameof(ActiveRotation));
+        }
+    }
+
+    /// <summary>Wraps the selected layer(s) into a new folder (upstream groupSelectedLayers).</summary>
+    public void GroupSelected()
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+        var members = Doc.Layers.Where(l => l.Id == _selected.Id).ToList();
+        if (members.Count == 0)
+        {
+            return;
+        }
+        var groupId = members[0].Id;
+        PushAndRefresh(new GroupLayersCommand(Doc, members));
+        Selected = Rows.FirstOrDefault(r => r.Id == groupId);
+    }
+
+    /// <summary>New empty folder at the active layer's stack position (upstream addGroup).</summary>
+    public void AddGroup()
+    {
+        var group = Layer.Group();
+        var index = ActiveLayer is { } active ? Doc.Layers.IndexOf(active) + 1 : Doc.Layers.Count;
+        PushAndRefresh(new AddGroupCommand(Doc, group, index));
+        Selected = Rows.FirstOrDefault(r => r.Id == group.Id);
+    }
+
+    /// <summary>Merges the active layer into the pixel layer beneath it (upstream merge down).</summary>
+    public void MergeDown()
+    {
+        if (ActiveLayer is not { } active || active.IsGroup || active.Pixels is null)
+        {
+            return;
+        }
+        var index = Doc.Layers.IndexOf(active);
+        var below = Doc.Layers.Take(index).LastOrDefault(l => l.ParentId == active.ParentId);
+        if (below is null || below.IsGroup || below.Pixels is null)
+        {
+            return;
+        }
+        PushAndRefresh(new MergeLayersCommand(Doc, [below, active]));
+        Selected = Rows.FirstOrDefault(r => r.Id == below.Id);
+    }
+
+    public void FlipActive(bool horizontally)
+    {
+        if (ActiveLayer is not { } layer || layer.Pixels is null)
+        {
+            return;
+        }
+        PushAndRefresh(new FlipLayerCommand(layer, horizontally));
+    }
+
+    public void FlipCanvas(bool horizontally) =>
+        PushAndRefresh(new FlipCanvasCommand(Doc, horizontally));
 
     // ---------------------------------------------------------------------
     // View transform (zoom/pan). ViewScale 1.0 = fit-to-viewport.

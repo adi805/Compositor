@@ -1,3 +1,4 @@
+using Avalonia;
 using Compositor.Core;
 using System.ComponentModel;
 
@@ -15,6 +16,19 @@ public sealed class LayerRow : INotifyPropertyChanged
 
     public string Name => Layer.Name;
 
+    /// <summary>Hierarchy depth for indentation (0 = root).</summary>
+    public int Depth { get; init; }
+
+    public Thickness Indent => new(Depth * 16, 0, 0, 0);
+
+    /// <summary>List label: folders get a folder glyph.</summary>
+    public string DisplayName => (Layer.IsGroup ? "\U0001F4C1 " : string.Empty) + Layer.Name;
+
+    public bool IsGroup => Layer.IsGroup;
+
+    /// <summary>Raised when a proxied value changed so the canvas can refresh.</summary>
+    public event Action<LayerRow>? LayerChanged;
+
     private bool _isActive;
     public bool IsActive
     {
@@ -31,6 +45,7 @@ public sealed class LayerRow : INotifyPropertyChanged
             {
                 Layer.IsVisible = value;
                 OnPropertyChanged(nameof(IsVisible));
+                LayerChanged?.Invoke(this);
             }
         }
     }

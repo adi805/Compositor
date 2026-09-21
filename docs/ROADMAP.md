@@ -135,3 +135,14 @@ Acceptance:
 - AdjustmentRunner + AdjustmentCommand; preview overlay keyed by generation counter
 - Tests: 128 Core + 49 App = 177 green; smoke OK
 - Known gaps: non-destructive adjustment layers, per-band spectrum UI, async preview pipeline, Grain (→ WS9)
+
+## Layer power (WS5) - 2026-09-21
+- Layer hierarchy: ParentId/IsGroup, LayerHierarchy validate (depth<=64, anti-cycle, parent-must-be-group), hidden group hides subtree (flatten + canvas)
+- Group ops: group selected (Folder N), new folder, reorder up/down, semua undo-able via commands
+- Merge down/group: bake blend+opacity, trim ke content bounds, satu undo step
+- Flip: layer + whole canvas (pixels baked + transform flags, selection ikut termirror)
+- Transform typed: Scale% / Rotate via SetLayerTransformCommand (center preserved)
+- Appearance: opacity slider + blend picker (13 mode) di panel layer
+- Format manifest v2 (parentUUID/isGroup)
+- Tests: 148 Core + 59 App = 207 green; smoke OK
+- Known gaps: interactive drag transform (WS11), layer masks (WS9/terpisah), drag-reorder panel

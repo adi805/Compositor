@@ -15,10 +15,10 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | EditorSession.swift | 689 | partial | Peran session dipecah ke EditorViewModel; belum tool-state lengkap |
 | HueSaturation.swift | 574 | partial | WS4: band math + master/colorize + sheet; per-band spectrum UI & eyedroppers missing |
 | Filters.swift | 473 | missing | WS9 |
-| LayerMask.swift | 419 | missing | WS5 |
+| LayerMask.swift | 419 | missing | WS5 (layer mask system terpisah, bukan group) |
 | Selection.swift | 310 | partial | Rect/ellipse/lasso/mode+antialias coverage, invert, clip (WS3); feather/expand/contract missing |
 | Distort.swift | 291 | missing | WS8 |
-| LayerTransform.swift | 235 | partial | Model transform ada; belum interaktif edit (WS5) |
+| LayerTransform.swift | 235 | partial | WS5: Scaled/Rounded/Mirrored/IsValid + typed scale/rotate UI; drag handles interaktif di WS11 |
 | LiveLayerMask.swift | 230 | missing | WS5 |
 | Levels.swift | 228 | done | WS4: engine + histogram + auto + sampling; slider sheet |
 | ColorPalette.swift | 216 | missing | WS10 |
@@ -28,7 +28,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | SelectionClipboard.swift | 204 | done | Copy/cut/paste via selection, floating commit as one undo step |
 | EditorSession+Brush.swift | 201 | partial | VM wiring brush ada; belum parameter lengkap |
 | Crop.swift | 199 | missing | WS6 |
-| LayerGroups.swift | 190 | missing | WS5 |
+| LayerGroups.swift | 190 | partial | WS5: hierarchy entries/validate/visible, group selected + new folder + reorder undo-able, indent rows; drag-reorder di panel belum |
 | FloatingSelection.swift | 159 | partial | Floating overlay + nudge/commit/cancel; no drag-move yet |
 | ShapeTool.swift | 157 | missing | WS8 |
 | MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
@@ -109,8 +109,8 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | CurvesControls (69) | partial | WS4: canvas editor add/drag points; no spectrum/histogram underlay |
 | NavigationToolHeader (64) | partial | Toolbar sederhana ada |
 | ProjectWindowBridge (62) | n/a | Bridging Mac |
-| BlendModePicker (57) | missing | WS5 |
-| LayerAppearanceControls (54) | missing | WS5 |
+| BlendModePicker (57) | done | WS5: ComboBox 13 mode terikat ActiveBlend |
+| LayerAppearanceControls (54) | partial | WS5: opacity slider + blend picker + scale/rotate fields; belum cycle shortcut Shift+- |
 | ShapeControls (49) | missing | WS8 |
 | SliderSnap (42) | missing | WS10 |
 | ToolHeaderStyle (26) | partial | |
@@ -119,7 +119,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 
 ## Ringkasan
 
-- Done: 5. Partial: 25. Missing: 39. n/a: 3. (setelah WS4)
+- Done: 6. Partial: 29. Missing: 33. n/a: 3. (setelah WS5)
 - Urut dependensi (workstream plan): WS2 blend engine → WS3 selection → WS4 adjustments → WS5 layer power → WS6 geometry → WS7 brush v2 → WS8 tools → WS9 filters → WS10 IO/UX → WS11 rendering perf → WS12 ML decision → WS13 release.
 - Catatan jujur: SubjectRemoval/ContentFill/GuidedMatte di Mac pakai Apple Vision ML. Paritas di Windows berarti ONNX Runtime + model terbuka; keputusan arsitektur di WS12, hasilnya di-update di matriks ini.
 
@@ -129,3 +129,14 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - Undo: AdjustmentCommand (buffer swap, idempotent redo)
 - UI: Adjust menu, floating sheet panel (Levels sliders+auto+histogram, Curves editor, HueSat sliders, Exposure sliders, GradientMap pickers), live preview via canvas generation-keyed bitmap
 - Tests: 35 Core (hand-computed values) + 10 App (sheet flow, commit/cancel, undo, selection-constrained)
+
+## WS5 - Layer power - 2026-09-21
+- Hierarchy: Layer.ParentId/IsGroup, LayerHierarchy (entries/visible/descendants/validate: depth<=64, parent harus group, anti-cycle), flatten + canvas render hierarchy-aware (hidden group = subtree disembunyiin)
+- Groups: GroupLayersCommand (Folder N auto-name, common parent), AddGroupCommand, ReorderLayerCommand (move up/down undo-able), rows ter-indent (Depth*16)
+- Merge: MergeLayersCommand = bake blend+opacity stack (CompositeStack) + trim ke content bounds (SurfaceOps.ContentBounds/Crop), hasil jadi pixel layer dengan transform origin; undo restore penuh
+- Flip: pixel bake (SurfaceOps.FlipCopy) + transform flag toggle (kedua-duanya, sengaja, sampai WS11 transform-driven rendering), FlipLayerCommand + FlipCanvasCommand (semua layer + selection termirror)
+- Transform: SetLayerTransformCommand; UI typed Scale%/Rotate (LostFocus), CenterX/Y preserved ala upstream scaled(toPercent:)
+- Appearance: opacity slider + blend ComboBox (13 mode) terikat ActiveOpacity/ActiveBlend via SetLayerAppearanceCommand; panel hidden untuk group
+- Format: manifest v2 (+parentUUID/isGroup); app v0.2 nolak file baru dengan pesan jelas
+- BUG FIX bawaan: ProjectStore.Save bocor stream image entry kedua dst (multi-image save selalu crash "entries still open") - kelihatan pertama kali karena test lama maksimal 1 layer berpixel
+- Tests: 20 Core + 9 App; total 207 (148 Core + 59 App)

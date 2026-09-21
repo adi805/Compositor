@@ -115,7 +115,7 @@ public sealed class CanvasView : Control, ICustomHitTest
         }
 
         var tint = 0;
-        foreach (var layer in ViewModel.Doc.Layers)
+        foreach (var layer in LayerHierarchy.VisibleLayers(ViewModel.Doc.Layers))
         {
             if (!layer.IsVisible)
             {
