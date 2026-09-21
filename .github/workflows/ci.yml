@@ -20,4 +20,4 @@ jobs:
       - name: Test
         run: dotnet test tests/Compositor.Core.Tests --no-build -c Release
       - name: Smoke (App entry point)
-        run: dotnet run --project src/Compositor.App -c Release --no-build
+        run: dotnet run --project src/Compositor.App -c Release --no-build -- --smoke

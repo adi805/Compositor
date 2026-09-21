@@ -1,0 +1,33 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish (win-x64, self-contained)
+        run: dotnet publish src/Compositor.App -c Release -r win-x64 --self-contained true -o publish
+      - name: Zip
+        run: |
+          cd publish
+          zip -r ../Compositor-Windows-${GITHUB_REF_NAME}-win-x64.zip .
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "Compositor-Windows-${GITHUB_REF_NAME}-win-x64.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Compositor.Windows ${GITHUB_REF_NAME}" \
+            --notes "Pre-alpha dev preview. Self-contained Windows build (no .NET install needed). Unzip, run Compositor.App.exe (UI launches directly; use --smoke for the headless check). Features: document model, layers panel, brush painting with per-stroke undo/redo, .comp project round-trip." \
+            --latest
