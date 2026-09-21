@@ -204,6 +204,10 @@ public static class ProjectStore
                 nameof(BlendMode.Difference) => "difference",
                 nameof(BlendMode.ColorDodge) => "colorDodge",
                 nameof(BlendMode.ColorBurn) => "colorBurn",
+                nameof(BlendMode.Hue) => "hue",
+                nameof(BlendMode.Saturation) => "saturation",
+                nameof(BlendMode.Color) => "color",
+                nameof(BlendMode.Luminosity) => "luminosity",
                 _ => throw new InvalidOperationException(
                     $"Unknown blend mode {l.Blend}."),
             },
@@ -359,6 +363,10 @@ public static class ProjectStore
         "difference" => BlendMode.Difference,
         "colorDodge" => BlendMode.ColorDodge,
         "colorBurn" => BlendMode.ColorBurn,
+        "hue" => BlendMode.Hue,
+        "saturation" => BlendMode.Saturation,
+        "color" => BlendMode.Color,
+        "luminosity" => BlendMode.Luminosity,
         _ => null,
     };
 
@@ -373,6 +381,10 @@ public static class ProjectStore
         BlendMode.Difference => "difference",
         BlendMode.ColorDodge => "colorDodge",
         BlendMode.ColorBurn => "colorBurn",
+        BlendMode.Hue => "hue",
+        BlendMode.Saturation => "saturation",
+        BlendMode.Color => "color",
+        BlendMode.Luminosity => "luminosity",
         _ => throw new InvalidOperationException($"Unknown blend mode {mode}."),
     };
 }

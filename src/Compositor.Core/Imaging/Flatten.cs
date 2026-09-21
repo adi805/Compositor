@@ -4,10 +4,10 @@ namespace Compositor.Core.Imaging;
 
 /// <summary>
 /// Flattens a document stack into a single straight-alpha RGBA buffer
-/// (bottom-first over-compositing). Used by PNG export.
-/// v1 scope: Normal blend only; layer opacity and visibility are applied,
-/// other BlendMode values are treated as Normal until the raster engine
-/// grows per-mode kernels.
+/// (bottom-first compositing). Used by PNG export. Mirrors upstream
+/// ImageExporter: each visible layer contributes with its own opacity and
+/// blend mode; blending follows the PDF/W3C formulas upstream gets from
+/// CoreGraphics/CoreImage (see Imaging.Blend).
 /// </summary>
 public static class Flatten
 {
@@ -35,30 +35,27 @@ public static class Flatten
             }
 
             var srcPx = src.Pixels;
+            var mode = layer.Blend;
             for (var i = 0; i < output.Length; i += 4)
             {
-                var sa = (srcPx[i + 3] / 255f) * (float)opacity;
-                if (sa <= 0f)
+                if (srcPx[i + 3] == 0)
                 {
                     continue;
                 }
 
-                var da = output[i + 3] / 255f;
-                var oa = sa + (da * (1f - sa));
-                if (oa <= 0f)
-                {
-                    continue;
-                }
+                Blend.Compose(
+                    mode, (float)opacity,
+                    output[i], output[i + 1], output[i + 2], output[i + 3],
+                    srcPx[i], srcPx[i + 1], srcPx[i + 2], srcPx[i + 3],
+                    out var r, out var g, out var b, out var a);
 
-                output[i] = ToByte((srcPx[i] * sa + output[i] * da * (1f - sa)) / oa);
-                output[i + 1] = ToByte((srcPx[i + 1] * sa + output[i + 1] * da * (1f - sa)) / oa);
-                output[i + 2] = ToByte((srcPx[i + 2] * sa + output[i + 2] * da * (1f - sa)) / oa);
-                output[i + 3] = ToByte(oa * 255f);
+                output[i] = r;
+                output[i + 1] = g;
+                output[i + 2] = b;
+                output[i + 3] = a;
             }
         }
 
         return (doc.Width, doc.Height, output);
     }
-
-    private static byte ToByte(float value) => byte.CreateSaturating(Math.Round(value));
 }
