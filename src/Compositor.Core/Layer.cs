@@ -11,6 +11,15 @@ public sealed class Layer
 
     public string Name { get; set; } = "Layer";
 
+    /// <summary>Parent group. Null = root level. Must reference a layer with IsGroup.</summary>
+    public Guid? ParentId { get; set; }
+
+    /// <summary>
+    /// True when this layer is a folder that groups its children.
+    /// Groups carry no pixels of their own (upstream: isGroup implies imageFile nil).
+    /// </summary>
+    public bool IsGroup { get; set; }
+
     public bool IsVisible { get; set; } = true;
     public double Opacity { get; set; } = 1.0;
     public BlendMode Blend { get; set; } = BlendMode.Normal;
@@ -31,4 +40,8 @@ public sealed class Layer
         Name = string.IsNullOrWhiteSpace(name) ? "Layer" : name.Trim();
         Id = id ?? Guid.NewGuid();
     }
+
+    /// <summary>Creates a group folder node (no pixels, ever).</summary>
+    public static Layer Group(string? name = null, Guid? id = null) =>
+        new(name ?? "Group", id) { IsGroup = true, Pixels = null };
 }

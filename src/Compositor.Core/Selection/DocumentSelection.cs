@@ -284,6 +284,36 @@ public sealed class SelectionShape
 
     public (float X0, float Y0, float X1, float Y1) Bounds() => (X, Y, X + Width, Y + Height);
 
+    /// <summary>
+    /// This shape mirrored across the canvas middle (flip canvas parity with
+    /// upstream). Mirroring is affine, so subtract/intersect modes compose
+    /// unchanged; only geometry moves.
+    /// </summary>
+    public SelectionShape Mirrored(int canvasWidth, int canvasHeight, bool horizontally)
+    {
+        if (horizontally)
+        {
+            var mx = canvasWidth - (X + Width);
+            if (Points.Count > 0)
+            {
+                return SelectionShape.Lasso(
+                    Points.Select(p => (canvasWidth - p.X, p.Y)).ToList(), Mode);
+            }
+            return Kind == SelectionKind.Ellipse
+                ? SelectionShape.Ellipse(mx, Y, Width, Height, Mode)
+                : SelectionShape.Rectangle(mx, Y, Width, Height, Mode);
+        }
+        var my = canvasHeight - (Y + Height);
+        if (Points.Count > 0)
+        {
+            return SelectionShape.Lasso(
+                Points.Select(p => (p.X, canvasHeight - p.Y)).ToList(), Mode);
+        }
+        return Kind == SelectionKind.Ellipse
+            ? SelectionShape.Ellipse(X, my, Width, Height, Mode)
+            : SelectionShape.Rectangle(X, my, Width, Height, Mode);
+    }
+
     public bool Contains(float px, float py)
     {
         return Kind switch

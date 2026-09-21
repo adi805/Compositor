@@ -13,7 +13,7 @@ namespace Compositor.Core.Project;
 public static class ProjectStore
 {
     public const string Identifier = "com.compositor.windows.project";
-    public const int Version = 1;
+    public const int Version = 2;
 
     public const int MaxSidePixels = 30_000;
     public const long MaxTotalPixels = 100_000_000;
@@ -62,7 +62,10 @@ public static class ProjectStore
                     var png = new MemoryStream();
                     Png.Encode(png, layer.Pixels.Width, layer.Pixels.Height, layer.Pixels.Pixels);
                     var imageEntry = zip.CreateEntry($"images/{layer.Id}.png");
-                    imageEntry.Open().Write(png.ToArray());
+                    using (var imageStream = imageEntry.Open())
+                    {
+                        imageStream.Write(png.ToArray());
+                    }
                 }
             }
 
@@ -222,6 +225,8 @@ public static class ProjectStore
                 FlipV = l.Transform.FlipV,
             },
             Image = l.Pixels is null ? null : $"images/{l.Id}.png",
+            ParentUuid = l.ParentId?.ToString(),
+            IsGroup = l.IsGroup,
         }).ToList(),
     };
 
@@ -300,6 +305,18 @@ public static class ProjectStore
                         $"Layer '{layer.Name}' references missing image '{imageName}'.");
                 }
             }
+
+            if (layer.IsGroup && layer.Image is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Group layer '{layer.Name}' must not carry an image entry.");
+            }
+
+            if (layer.ParentUuid is { } parentUuid && !layerIdByUuid.ContainsKey(parentUuid))
+            {
+                throw new InvalidOperationException(
+                    $"Layer '{layer.Name}' references missing parent '{parentUuid}'.");
+            }
         }
 
         Guid? activeId = null;
@@ -335,6 +352,7 @@ public static class ProjectStore
             {
                 IsVisible = layer.IsVisible,
                 IsLocked = layer.IsLocked,
+                IsGroup = layer.IsGroup,
                 Opacity = layer.Opacity,
                 Blend = ParseBlend(layer.BlendMode)!.Value,
                 Transform = new LayerTransform(
@@ -347,6 +365,25 @@ public static class ProjectStore
                     layer.Transform.FlipV),
                 Pixels = pixels,
             });
+        }
+
+        // Second pass: resolve parent references (every layer now exists),
+        // then enforce the structural invariants before handing the doc out.
+        for (var i = 0; i < manifest.Layers.Count; i++)
+        {
+            if (manifest.Layers[i].ParentUuid is { } parentUuid)
+            {
+                doc.Layers[i].ParentId = layerIdByUuid[parentUuid];
+            }
+        }
+
+        try
+        {
+            LayerHierarchy.Validate(doc.Layers);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidOperationException($"Invalid layer hierarchy: {ex.Message}", ex);
         }
 
         return doc;

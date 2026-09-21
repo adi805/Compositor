@@ -3,14 +3,14 @@ using System.Text.Json.Serialization;
 
 namespace Compositor.Core.Project;
 
-/// <summary>Manifest DTO for the .comp format, version 1 (Mac v6 subset).</summary>
+/// <summary>Manifest DTO for the .comp format, version 2 (Mac v6 subset + layer groups).</summary>
 public sealed record Manifest
 {
     [JsonPropertyName("identifier")]
     public string Identifier { get; init; } = ProjectStore.Identifier;
 
     [JsonPropertyName("version")]
-    public int Version { get; init; } = 1;
+    public int Version { get; init; } = 2;
 
     [JsonPropertyName("documentUUID")]
     public string DocumentUuid { get; init; } = string.Empty;
@@ -58,6 +58,14 @@ public sealed record ManifestLayer
     /// <summary>Image entry name under images/, absent for blank layers.</summary>
     [JsonPropertyName("image")]
     public string? Image { get; init; }
+
+    /// <summary>Parent group UUID string, absent for root-level layers (format v2).</summary>
+    [JsonPropertyName("parentUUID")]
+    public string? ParentUuid { get; init; }
+
+    /// <summary>True for group folders (no image, children follow in list order).</summary>
+    [JsonPropertyName("isGroup")]
+    public bool IsGroup { get; init; }
 }
 
 /// <summary>Transform block: origin, size, clockwise degrees, flips.</summary>

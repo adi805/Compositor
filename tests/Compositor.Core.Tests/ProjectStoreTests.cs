@@ -152,7 +152,7 @@ public sealed class ProjectStoreTests : IDisposable
     {
         var path = PathFor("newer.comp");
         ProjectStore.Save(new Document(10, 10), path);
-        RewriteManifest(path, m => m with { Version = 2 });
+        RewriteManifest(path, m => m with { Version = ProjectStore.Version + 1 });
         Assert.Throws<InvalidOperationException>(() => ProjectStore.Load(path));
     }
 
