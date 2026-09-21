@@ -121,3 +121,11 @@ Acceptance:
 - **Hit testing**: `CanvasView` implements `ICustomHitTest` (Avalonia.Rendering); a plain Control with no DrawList is otherwise invisible to the hit tester (verified against Avalonia 11.2.7 `CompositionDrawListVisual.HitTest`).
 - **Test count**: 47 Core + 22 App (6 headless UI) = 69, all green locally. Headless drag test proves hit-test + coordinate mapping + paint + undo end-to-end.
 - Next up: file dialogs (open/save), zoom/pan, PNG/JPEG/WebP import via SkiaSharp.
+
+## Selection system (WS3) - 2026-09-21
+- DocumentSelection/SelectionClip/CoverageBackedSelection, 2x2 supersampled antialiased masks
+- Rectangle/ellipse/polygon(lasso) shapes, replace/add/subtract combine, invert, select-all
+- MagicWand contiguous flood fill with tolerance
+- Constrained brush (mask multiplies stamp alpha), masked blend for patches
+- Clipboard: copy/cut/paste, FloatingSelection nudge/commit/cancel, single undo step
+- UI: Select menu, tool picker, dashed outline + live draft, floating pixel overlay, Ctrl+A/D/Shift+I/X/C/V, Delete/Enter/Escape

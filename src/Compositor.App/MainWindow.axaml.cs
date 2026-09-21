@@ -239,16 +239,83 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     return;
                 case Key.I:
-                    OnImportImage(this, e);
+                    if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                    {
+                        Vm?.InvertSelection();
+                    }
+                    else
+                    {
+                        OnImportImage(this, e);
+                    }
                     e.Handled = true;
                     return;
                 case Key.E:
                     OnExportPng(this, e);
                     e.Handled = true;
                     return;
+                case Key.A:
+                    Vm?.SelectAll();
+                    e.Handled = true;
+                    return;
+                case Key.D:
+                    Vm?.Deselect();
+                    e.Handled = true;
+                    return;
+                case Key.X:
+                    Vm?.CutSelection();
+                    e.Handled = true;
+                    return;
+                case Key.C:
+                    Vm?.CopySelection();
+                    e.Handled = true;
+                    return;
+                case Key.V:
+                    Vm?.PasteSelection();
+                    e.Handled = true;
+                    return;
             }
         }
 
+        switch (e.Key)
+        {
+            case Key.Delete:
+                Vm?.CutSelection();
+                e.Handled = true;
+                return;
+            case Key.Enter:
+                Vm?.CommitFloating();
+                e.Handled = true;
+                return;
+            case Key.Escape:
+                Vm?.CancelFloating();
+                e.Handled = true;
+                return;
+        }
+
         base.OnKeyDown(e);
+    }
+
+    private void OnSelectAll(object? sender, RoutedEventArgs e) => Vm?.SelectAll();
+    private void OnDeselect(object? sender, RoutedEventArgs e) => Vm?.Deselect();
+    private void OnInvertSelection(object? sender, RoutedEventArgs e) => Vm?.InvertSelection();
+    private void OnCut(object? sender, RoutedEventArgs e) => Vm?.CutSelection();
+    private void OnCopy(object? sender, RoutedEventArgs e) => Vm?.CopySelection();
+    private void OnPaste(object? sender, RoutedEventArgs e) => Vm?.PasteSelection();
+    private void OnCommitFloating(object? sender, RoutedEventArgs e) => Vm?.CommitFloating();
+    private void OnCancelFloating(object? sender, RoutedEventArgs e) => Vm?.CancelFloating();
+
+    private void OnToolChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (Vm is null || ToolPicker.SelectedItem is not ComboBoxItem item || item.Content is not string label)
+        {
+            return;
+        }
+        Vm.Tool = label switch
+        {
+            "Rect select" => EditorViewModel.EditorTool.RectangleSelect,
+            "Ellipse select" => EditorViewModel.EditorTool.EllipseSelect,
+            "Lasso select" => EditorViewModel.EditorTool.LassoSelect,
+            _ => EditorViewModel.EditorTool.Brush,
+        };
     }
 }

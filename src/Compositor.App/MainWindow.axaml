@@ -19,8 +19,28 @@
         <MenuItem Header="Zoom _Out" Click="OnZoomOut" />
         <MenuItem Header="_Fit to window" Click="OnFitView" />
       </MenuItem>
+      <MenuItem Header="_Select">
+        <MenuItem Header="Select _All" Click="OnSelectAll" InputGesture="Ctrl+A" />
+        <MenuItem Header="_Deselect" Click="OnDeselect" InputGesture="Ctrl+D" />
+        <MenuItem Header="_Invert" Click="OnInvertSelection" InputGesture="Ctrl+Shift+I" />
+        <Separator />
+        <MenuItem Header="Cu_t" Click="OnCut" InputGesture="Ctrl+X" />
+        <MenuItem Header="_Copy" Click="OnCopy" InputGesture="Ctrl+C" />
+        <MenuItem Header="_Paste" Click="OnPaste" InputGesture="Ctrl+V" />
+        <Separator />
+        <MenuItem Header="_Commit floating" Click="OnCommitFloating" InputGesture="Enter" />
+        <MenuItem Header="Cancel _floating" Click="OnCancelFloating" InputGesture="Escape" />
+      </MenuItem>
     </Menu>
     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,4,8,4">
+      <ComboBox x:Name="ToolPicker" Width="130" SelectedIndex="0" ToolTip.Tip="Tool"
+                SelectionChanged="OnToolChanged">
+        <ComboBoxItem>Brush</ComboBoxItem>
+        <ComboBoxItem>Rect select</ComboBoxItem>
+        <ComboBoxItem>Ellipse select</ComboBoxItem>
+        <ComboBoxItem>Lasso select</ComboBoxItem>
+      </ComboBox>
+      <Separator Width="8" />
       <TextBlock Text="Brush" FontWeight="Bold" VerticalAlignment="Center" />
       <Slider x:Name="BrushSize" Minimum="1" Maximum="128"
               Value="{Binding BrushRadius}" Width="120"

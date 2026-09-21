@@ -16,6 +16,13 @@ public sealed class Document
     /// <summary>Active layer, serialized as activeLayerUUID. Null is valid.</summary>
     public Guid? ActiveLayerId { get; set; }
 
+    /// <summary>
+    /// Active selection (upstream DocumentSelection). Null = no selection
+    /// (edits touch everything); non-null empty = touch nothing.
+    /// Session state, intentionally not serialized to .comp v1.
+    /// </summary>
+    public Selection.DocumentSelection? Selection { get; set; }
+
     public List<Layer> Layers { get; } = new();
 
     public Document(int width, int height, Guid? id = null)

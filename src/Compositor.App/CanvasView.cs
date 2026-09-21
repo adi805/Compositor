@@ -140,6 +140,85 @@ public sealed class CanvasView : Control, ICustomHitTest
 
             tint++;
         }
+
+        RenderSelectionOverlay(context, canvasRect);
+    }
+
+    private WriteableBitmap? _floatingBitmap;
+    private Compositor.Core.Selection.FloatingSelection? _floatingSource;
+    private static readonly IPen SelectionPen = new Pen(Brushes.Cyan, 1, DashStyle.Dash);
+
+    /// <summary>Floating pixels, selection outline, and the live marquee draft.</summary>
+    private void RenderSelectionOverlay(DrawingContext context, Rect canvasRect)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        var doc = ViewModel.Doc;
+        var scale = canvasRect.Width / doc.Width;
+
+        if (ViewModel.Floating is { } floating)
+        {
+            if (_floatingBitmap is null || !ReferenceEquals(_floatingSource, floating))
+            {
+                _floatingBitmap?.Dispose();
+                _floatingBitmap = CreateBitmap(floating.Width, floating.Height, floating.Pixels);
+                _floatingSource = floating;
+            }
+            if (_floatingBitmap is not null)
+            {
+                var rect = new Rect(
+                    canvasRect.X + (floating.X * scale),
+                    canvasRect.Y + (floating.Y * scale),
+                    floating.Width * scale,
+                    floating.Height * scale);
+                context.DrawImage(_floatingBitmap, rect);
+                context.DrawRectangle(SelectionPen, rect);
+            }
+        }
+
+        if (doc.Selection is { IsEmpty: false } selection)
+        {
+            var clip = selection.Clip(doc.Width, doc.Height);
+            if (clip.Coverage is not null)
+            {
+                context.DrawRectangle(SelectionPen, new Rect(
+                    canvasRect.X + (clip.X * scale),
+                    canvasRect.Y + (clip.Y * scale),
+                    clip.Width * scale,
+                    clip.Height * scale));
+            }
+        }
+
+        if (ViewModel.DraftBounds is { } draft)
+        {
+            context.DrawRectangle(SelectionPen, new Rect(
+                canvasRect.X + (draft.X * scale),
+                canvasRect.Y + (draft.Y * scale),
+                draft.W * scale,
+                draft.H * scale));
+        }
+    }
+
+    private static WriteableBitmap? CreateBitmap(int width, int height, byte[] pixels)
+    {
+        try
+        {
+            var bitmap = new WriteableBitmap(
+                new PixelSize(width, height),
+                new Vector(96, 96),
+                PixelFormats.Rgba8888,
+                AlphaFormat.Unpremul);
+            using var fb = bitmap.Lock();
+            Marshal.Copy(pixels, 0, fb.Address, pixels.Length);
+            return bitmap;
+        }
+        catch (Exception)
+        {
+            return null; // headless/no-render-context
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -171,6 +250,17 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
+        if (ViewModel.Tool != EditorViewModel.EditorTool.Brush)
+        {
+            if (ViewModel.BeginMarquee(doc.Value.X, doc.Value.Y))
+            {
+                e.Pointer.Capture(this);
+                e.Handled = true;
+                InvalidateVisual();
+            }
+            return;
+        }
+
         if (ViewModel.BeginStroke(doc.Value.X, doc.Value.Y))
         {
             e.Pointer.Capture(this);
@@ -193,6 +283,18 @@ public sealed class CanvasView : Control, ICustomHitTest
             ViewModel.PanBy(pos.X - last.X, pos.Y - last.Y);
             _panLast = pos;
             e.Handled = true;
+            return;
+        }
+
+        if (ViewModel.IsMarqueeActive)
+        {
+            var mdoc = ToDocCoords(e.GetPosition(this));
+            if (mdoc is not null)
+            {
+                ViewModel.ContinueMarquee(mdoc.Value.X, mdoc.Value.Y);
+                e.Handled = true;
+                InvalidateVisual();
+            }
             return;
         }
 
@@ -225,6 +327,15 @@ public sealed class CanvasView : Control, ICustomHitTest
             _panLast = null;
             e.Pointer.Capture(null);
             e.Handled = true;
+            return;
+        }
+
+        if (ViewModel?.IsMarqueeActive == true)
+        {
+            ViewModel.EndMarquee();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            InvalidateVisual();
             return;
         }
 
@@ -343,6 +454,9 @@ public sealed class CanvasView : Control, ICustomHitTest
     private void Detach()
     {
         DetachRows();
+        _floatingBitmap?.Dispose();
+        _floatingBitmap = null;
+        _floatingSource = null;
         if (_attached is null)
         {
             return;

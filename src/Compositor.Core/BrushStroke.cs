@@ -8,13 +8,16 @@ namespace Compositor.Core;
 /// </summary>
 public static class BrushStroke
 {
-    /// <summary>Applies a stroke; mutates the surface in place.</summary>
+    /// <summary>Applies a stroke; mutates the surface in place. An optional
+    /// selection clip constrains the stroke (upstream: brush edits respect
+    /// the active selection, soft edges blend partially).</summary>
     public static void Apply(
         RasterSurface surface,
         IReadOnlyList<(float X, float Y)> path,
         float radius,
         byte r, byte g, byte b, byte a,
-        float opacity)
+        float opacity,
+        Selection.SelectionClip? selection = null)
     {
         ArgumentNullException.ThrowIfNull(surface);
         ArgumentNullException.ThrowIfNull(path);
@@ -31,7 +34,7 @@ public static class BrushStroke
         {
             if (i == 0)
             {
-                Stamp(surface, path[0].X, path[0].Y, radius, r, g, b, a, opacity);
+                Stamp(surface, path[0].X, path[0].Y, radius, r, g, b, a, opacity, selection);
                 continue;
             }
 
@@ -44,7 +47,7 @@ public static class BrushStroke
             for (var s = 1; s <= steps; s++)
             {
                 var t = s / (float)steps;
-                Stamp(surface, x0 + (dx * t), y0 + (dy * t), radius, r, g, b, a, opacity);
+                Stamp(surface, x0 + (dx * t), y0 + (dy * t), radius, r, g, b, a, opacity, selection);
             }
         }
     }
@@ -74,7 +77,8 @@ public static class BrushStroke
 
     private static void Stamp(
         RasterSurface surface, float cx, float cy,
-        float radius, byte r, byte g, byte b, byte a, float opacity)
+        float radius, byte r, byte g, byte b, byte a, float opacity,
+        Selection.SelectionClip? selection = null)
     {
         var x0 = Math.Max(0, (int)MathF.Floor(cx - radius));
         var y0 = Math.Max(0, (int)MathF.Floor(cy - radius));
@@ -100,6 +104,15 @@ public static class BrushStroke
                 }
 
                 var falloff = 1f - (dist / radius);
+                if (selection is not null)
+                {
+                    var factor = selection.FactorAt(x, y);
+                    if (factor <= 0f)
+                    {
+                        continue;
+                    }
+                    falloff *= factor;
+                }
                 var stampAlpha = srcA * falloff;
                 BlendPixel(surface, x, y, r, g, b, stampAlpha);
             }

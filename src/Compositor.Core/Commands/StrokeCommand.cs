@@ -17,6 +17,7 @@ public sealed class StrokeCommand : IUndoCommand
     private readonly float _opacity;
     private readonly (int X, int Y, int Width, int Height) _bounds;
     private readonly byte[] _before;
+    private readonly Selection.SelectionClip? _clip;
     private byte[]? _after;
 
     /// <param name="beforeFullSnapshot">
@@ -37,7 +38,8 @@ public sealed class StrokeCommand : IUndoCommand
         byte r, byte g, byte b, byte a,
         float opacity,
         byte[] beforeFullSnapshot,
-        bool alreadyApplied)
+        bool alreadyApplied,
+        Selection.SelectionClip? clip = null)
     {
         _surface = surface ?? throw new ArgumentNullException(nameof(surface));
         _path = path ?? throw new ArgumentNullException(nameof(path));
@@ -60,6 +62,7 @@ public sealed class StrokeCommand : IUndoCommand
         _b = b;
         _a = a;
         _opacity = opacity;
+        _clip = clip;
         _bounds = BrushStroke.Bounds(path, radius, surface.Width, surface.Height);
         _before = ExtractRegion(beforeFullSnapshot);
         if (alreadyApplied)
@@ -72,7 +75,7 @@ public sealed class StrokeCommand : IUndoCommand
     {
         if (_after is null)
         {
-            BrushStroke.Apply(_surface, _path, _radius, _r, _g, _b, _a, _opacity);
+            BrushStroke.Apply(_surface, _path, _radius, _r, _g, _b, _a, _opacity, _clip);
             _after = Capture(_bounds);
         }
         else

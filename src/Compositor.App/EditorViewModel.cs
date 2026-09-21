@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Compositor.Core;
 using Compositor.Core.Imaging;
 using Compositor.Core.Project;
+using Compositor.Core.Selection;
 
 namespace Compositor.App;
 
@@ -112,6 +113,34 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     private List<(float X, float Y)>? _strokePath;
     private RasterSurface? _strokeSurface;
     private byte[]? _strokeBefore;
+    private SelectionClip? _strokeClip;
+
+    /// <summary>Which tool the canvas pointer feeds (brush or a selection kind).</summary>
+    public enum EditorTool { Brush, RectangleSelect, EllipseSelect, LassoSelect }
+
+    private EditorTool _tool = EditorTool.Brush;
+    public EditorTool Tool
+    {
+        get => _tool;
+        set { if (_tool == value) return; _tool = value; OnPropertyChanged(nameof(Tool)); }
+    }
+
+    private bool _isMarqueeActive;
+    public bool IsMarqueeActive
+    {
+        get => _isMarqueeActive;
+        private set { if (_isMarqueeActive == value) return; _isMarqueeActive = value; OnPropertyChanged(nameof(IsMarqueeActive)); }
+    }
+
+    /// <summary>Live marquee bounds in document coords (rectangle/ellipse draft).</summary>
+    public (float X, float Y, float W, float H)? DraftBounds { get; private set; }
+
+    /// <summary>Live lasso outline in document coords (lasso draft).</summary>
+    public IReadOnlyList<(float X, float Y)>? DraftPoints { get; private set; }
+
+    private SelectionClipboardData? _clipboard;
+    private FloatingSelection? _floating;
+    public FloatingSelection? Floating => _floating;
 
     /// <summary>The layer strokes land on; null when no active layer matches.</summary>
     public Layer? ActiveLayer =>
@@ -139,6 +168,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         _strokeSurface = layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
         _strokePath = [(docX, docY)];
         _strokeBefore = (byte[])_strokeSurface.Pixels.Clone();
+        _strokeClip = Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
         IsStrokeActive = true;
         return true;
     }
@@ -160,7 +190,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         BrushStroke.Apply(
             _strokeSurface,
             [(prev.X, prev.Y), (docX, docY)],
-            _brushRadius, _brushR, _brushG, _brushB, 255, 1f);
+            _brushRadius, _brushR, _brushG, _brushB, 255, 1f, _strokeClip);
     }
 
     /// <summary>
@@ -179,12 +209,13 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         var cmd = new StrokeCommand(
             _strokeSurface, _strokePath, _brushRadius,
             _brushR, _brushG, _brushB, 255, 1f,
-            _strokeBefore, alreadyApplied: true);
+            _strokeBefore, alreadyApplied: true, _strokeClip);
         History.Record(cmd);
 
         _strokePath = null;
         _strokeBefore = null;
         _strokeSurface = null;
+        _strokeClip = null;
         IsStrokeActive = false;
         OnHistoryChanged();
         RaiseDocumentChanged();
@@ -200,8 +231,168 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         if (path.Count == 1)
         {
             BrushStroke.Apply(
-                surface, path, _brushRadius, _brushR, _brushG, _brushB, 255, 1f);
+                surface, path, _brushRadius, _brushR, _brushG, _brushB, 255, 1f, _strokeClip);
         }
+    }
+
+    // ---- Selection tools (marquee / lasso) and clipboard commands ----
+
+    private (float X, float Y)? _marqueeAnchor;
+    private List<(float X, float Y)>? _lassoDraft;
+
+    /// <summary>Starts a marquee/lasso drag in document coordinates.</summary>
+    public bool BeginMarquee(float docX, float docY)
+    {
+        if (IsMarqueeActive || Tool == EditorTool.Brush)
+        {
+            return false;
+        }
+        _marqueeAnchor = (docX, docY);
+        _lassoDraft = Tool == EditorTool.LassoSelect ? [(docX, docY)] : null;
+        DraftPoints = null;
+        DraftBounds = (docX, docY, 0f, 0f);
+        IsMarqueeActive = true;
+        return true;
+    }
+
+    /// <summary>Extends the in-progress marquee/lasso to a new document point.</summary>
+    public void ContinueMarquee(float docX, float docY)
+    {
+        if (!IsMarqueeActive || _marqueeAnchor is not { } anchor)
+        {
+            return;
+        }
+
+        if (_lassoDraft is not null)
+        {
+            _lassoDraft.Add((docX, docY));
+            DraftPoints = _lassoDraft.ToArray();
+        }
+        else
+        {
+            DraftBounds = (MathF.Min(anchor.X, docX), MathF.Min(anchor.Y, docY),
+                MathF.Abs(docX - anchor.X), MathF.Abs(docY - anchor.Y));
+        }
+    }
+
+    /// <summary>Commits the draft into the document's selection (undo-safe session state).</summary>
+    public void EndMarquee()
+    {
+        if (!IsMarqueeActive)
+        {
+            return;
+        }
+
+        SelectionMode mode = SelectionMode.Replace;
+        DocumentSelection? shape = null;
+        if (_lassoDraft is { Count: >= 3 } points)
+        {
+            shape = DocumentSelection.ApplyTo(Doc.Selection, SelectionShape.Lasso(points, mode));
+        }
+        else if (_marqueeAnchor is { } anchor && DraftBounds is { } b && (b.W >= 1 || b.H >= 1))
+        {
+            var kind = Tool == EditorTool.EllipseSelect ? SelectionKind.Ellipse : SelectionKind.Rectangle;
+            shape = kind == SelectionKind.Ellipse
+                ? DocumentSelection.ApplyTo(Doc.Selection, SelectionShape.Ellipse(anchor.X, anchor.Y, b.W, b.H, mode))
+                : DocumentSelection.ApplyTo(Doc.Selection, SelectionShape.Rectangle(anchor.X, anchor.Y, b.W, b.H, mode));
+        }
+
+        _marqueeAnchor = null;
+        _lassoDraft = null;
+        DraftBounds = null;
+        DraftPoints = null;
+        IsMarqueeActive = false;
+
+        if (shape is not null)
+        {
+            Doc.Selection = shape.IsEmpty ? null : shape;
+        }
+        RaiseDocumentChanged();
+    }
+
+    public void SelectAll()
+    {
+        if (Doc.Selection is { IsEmpty: false } existing)
+        {
+            Doc.Selection = DocumentSelection.ApplyTo(existing, SelectionShape.Rectangle(0, 0, Doc.Width, Doc.Height, SelectionMode.Add));
+        }
+        else
+        {
+            Doc.Selection = DocumentSelection.All(Doc.Width, Doc.Height);
+        }
+        RaiseDocumentChanged();
+    }
+
+    public void Deselect()
+    {
+        Doc.Selection = null;
+        RaiseDocumentChanged();
+    }
+
+    public void InvertSelection()
+    {
+        Doc.Selection = (Doc.Selection is { IsEmpty: false } existing ? existing : DocumentSelection.Empty())
+            .Inverted(Doc.Width, Doc.Height);
+        if (Doc.Selection.IsEmpty)
+        {
+            Doc.Selection = null;
+        }
+        RaiseDocumentChanged();
+    }
+
+    public void CopySelection()
+    {
+        if (Doc.Selection is not { IsEmpty: false } sel || ActiveLayer?.Pixels is null)
+        {
+            return;
+        }
+        _clipboard = SelectionOps.Copy(ActiveLayer, sel, Doc.Width, Doc.Height);
+    }
+
+    public void CutSelection()
+    {
+        if (Doc.Selection is not { IsEmpty: false } sel || ActiveLayer is not { } layer || layer.Pixels is null)
+        {
+            return;
+        }
+        _clipboard = SelectionOps.Cut(Doc, layer, sel);
+        RaiseDocumentChanged();
+    }
+
+    /// <summary>Pastes the clipboard as a floating selection at its origin.</summary>
+    public void PasteSelection()
+    {
+        if (_clipboard is not { } data)
+        {
+            return;
+        }
+        _floating = new FloatingSelection((byte[])data.Pixels.Clone(), data.X, data.Y, data.Width, data.Height);
+        OnPropertyChanged(nameof(Floating));
+        RaiseDocumentChanged();
+    }
+
+    public void MoveFloating(int dx, int dy) => _floating?.Move(dx, dy);
+
+    /// <summary>Alpha-over merges the floating pixels into the active layer (one undo step).</summary>
+    public void CommitFloating()
+    {
+        if (_floating is not { } floating || ActiveLayer is not { } layer)
+        {
+            return;
+        }
+        History.Push(SelectionOps.CommitFloating(Doc, layer, floating));
+        _floating = null;
+        OnPropertyChanged(nameof(Floating));
+        OnHistoryChanged();
+        RaiseDocumentChanged();
+    }
+
+    /// <summary>Drops the floating pixels without touching the layer.</summary>
+    public void CancelFloating()
+    {
+        _floating = null;
+        OnPropertyChanged(nameof(Floating));
+        RaiseDocumentChanged();
     }
 
     public void Undo()

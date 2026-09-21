@@ -16,7 +16,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | HueSaturation.swift | 574 | missing | WS4 |
 | Filters.swift | 473 | missing | WS9 |
 | LayerMask.swift | 419 | missing | WS5 |
-| Selection.swift | 310 | missing | WS3 |
+| Selection.swift | 310 | partial | Rect/ellipse/lasso/mode+antialias coverage, invert, clip (WS3); feather/expand/contract missing |
 | Distort.swift | 291 | missing | WS8 |
 | LayerTransform.swift | 235 | partial | Model transform ada; belum interaktif edit (WS5) |
 | LiveLayerMask.swift | 230 | missing | WS5 |
@@ -24,14 +24,14 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | ColorPalette.swift | 216 | missing | WS10 |
 | SmudgeLiquify.swift | 210 | missing | WS8 |
 | ProjectWorkspace.swift | 210 | missing | WS10 (multi-project tabs) |
-| SelectionEdits.swift | 205 | missing | WS3 |
-| SelectionClipboard.swift | 204 | missing | WS3 |
+| SelectionEdits.swift | 205 | partial | Constrained paint + masked blend (WS3) |
+| SelectionClipboard.swift | 204 | done | Copy/cut/paste via selection, floating commit as one undo step |
 | EditorSession+Brush.swift | 201 | partial | VM wiring brush ada; belum parameter lengkap |
 | Crop.swift | 199 | missing | WS6 |
 | LayerGroups.swift | 190 | missing | WS5 |
-| FloatingSelection.swift | 159 | missing | WS3 |
+| FloatingSelection.swift | 159 | partial | Floating overlay + nudge/commit/cancel; no drag-move yet |
 | ShapeTool.swift | 157 | missing | WS8 |
-| MagicWand.swift | 138 | missing | WS3 |
+| MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
 | ImageAdjustments.swift | 134 | missing | WS4 |
 | DocumentHistory.swift | 119 | partial | UndoHistory ada (per-command); belum edit-group coalescing |
 | GuidedMatte.swift | 118 | missing | WS12 (ML) |
