@@ -342,6 +342,12 @@ public partial class MainWindow : Window
             "Rect select" => EditorViewModel.EditorTool.RectangleSelect,
             "Ellipse select" => EditorViewModel.EditorTool.EllipseSelect,
             "Lasso select" => EditorViewModel.EditorTool.LassoSelect,
+            "Magic wand" => EditorViewModel.EditorTool.MagicWand,
+            "Gradient" => EditorViewModel.EditorTool.Gradient,
+            "Shape" => EditorViewModel.EditorTool.Shape,
+            "Blur" => EditorViewModel.EditorTool.Blur,
+            "Smudge" => EditorViewModel.EditorTool.Smudge,
+            "Clone stamp" => EditorViewModel.EditorTool.CloneStamp,
             _ => EditorViewModel.EditorTool.Brush,
         };
     }

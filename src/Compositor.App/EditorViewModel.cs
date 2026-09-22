@@ -6,6 +6,7 @@ using Compositor.Core.Commands;
 using Compositor.Core.Imaging;
 using Compositor.Core.Project;
 using Compositor.Core.Selection;
+using Compositor.Core.Tools;
 
 namespace Compositor.App;
 
@@ -135,6 +136,283 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         Erasing = _isErasing,
     };
 
+    // ---- Extended paint tools (gradient / shape / blur / smudge / clone / wand) ----
+
+    /// <summary>Magic wand flood-fill tolerance (0..255 channel distance).</summary>
+    public int WandTolerance { get; set; } = 32;
+
+    /// <summary>Clone stamp source point (upstream Option-click).</summary>
+    public (float X, float Y)? CloneSource { get; private set; }
+
+    /// <summary>Clone aligned mode keeps the first stroke's offset between strokes.</summary>
+    public bool CloneAligned { get; set; } = true;
+
+    private (int Dx, int Dy)? _cloneAlignedOffset;
+
+    public void SetCloneSource(float x, float y)
+    {
+        CloneSource = (x, y);
+        _cloneAlignedOffset = null; // upstream: a new source starts a new alignment
+    }
+
+    /// <summary>Shape tool: fill with the brush color inside the dragged rect.</summary>
+    public ShapeKind ShapeKind { get; set; } = ShapeKind.Rectangle;
+
+    /// <summary>Gradient tool options.</summary>
+    public GradientSettings GradientOptions { get; set; } = new();
+
+    private (float X, float Y)? _dragAnchor;      // gradient / shape start
+    private (float X, float Y)? _dragLast;        // gradient / shape current end
+    private StrokeCoverage? _toolCoverage;        // blur / clone
+    private byte[]? _toolSample;                  // blur / clone sample
+    private SmudgeStroke? _smudge;                // smudge
+    private byte[]? _toolBefore;                  // full before-buffer for RegionCommand
+    private RasterSurface? _toolSurface;
+    private SelectionClip? _toolClip;
+
+    /// <summary>
+    /// Pointer-down dispatch for the paint-family tools (brush, blur, smudge,
+    /// clone, gradient, shape). Magic wand is click-once: it selects and
+    /// returns. Returns false when the tool did not take the drag.
+    /// </summary>
+    public bool BeginTool(float docX, float docY)
+    {
+        if (Tool == EditorTool.MagicWand)
+        {
+            if (ActiveLayer?.Pixels is { } wandSurface)
+            {
+                Doc.Selection = MagicWand.Select(
+                    wandSurface, (int)docX, (int)docY, WandTolerance, SelectionMode.Replace);
+                RaiseDocumentChanged();
+            }
+            return false;
+        }
+
+        var layer = ActiveLayer;
+        if (layer is null || layer.IsLocked)
+        {
+            return false;
+        }
+
+        var surface = layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
+        _toolClip = Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
+
+        switch (Tool)
+        {
+            case EditorTool.Brush:
+                var started = BeginStroke(docX, docY);
+                if (started)
+                {
+                    _toolSurface = surface;
+                    _toolBefore = (byte[])surface.Pixels.Clone(); // guard marker; real snapshot lives in _strokeBefore
+                }
+                return started;
+
+            case EditorTool.Blur:
+                _toolSurface = surface;
+                _toolBefore = (byte[])surface.Pixels.Clone();
+                _toolSample = BlurStroke.GaussianBlur(
+                    _toolBefore, surface.Width, surface.Height,
+                    BlurStroke.SigmaFor(_brushDiameter));
+                _toolCoverage = new StrokeCoverage(surface.Width, surface.Height,
+                    SnapshotBrushSettings() with { Erasing = false }, _toolClip);
+                _toolCoverage.WalkTo(docX, docY);
+                _toolCoverage.PaintSampleRegion(surface, _toolBefore, _toolSample);
+                break;
+
+            case EditorTool.CloneStamp:
+                if (CloneSource is not { } source)
+                {
+                    return false; // upstream: no source, no stamp
+                }
+                _toolSurface = surface;
+                _toolBefore = (byte[])surface.Pixels.Clone();
+                _toolSample = (byte[])surface.Pixels.Clone();
+                var offset = CloneStroke.OffsetFor(source, (docX, docY), _cloneAlignedOffset);
+                if (_cloneAlignedOffset is null)
+                {
+                    _cloneAlignedOffset = offset; // first stroke fixes the alignment
+                }
+                _toolCoverage = new StrokeCoverage(surface.Width, surface.Height,
+                    SnapshotBrushSettings() with { Erasing = false }, _toolClip);
+                _toolCoverage.WalkTo(docX, docY);
+                CloneStampPaint(offset);
+                break;
+
+            case EditorTool.Smudge:
+                _toolSurface = surface;
+                _toolBefore = (byte[])surface.Pixels.Clone();
+                _smudge = new SmudgeStroke(surface.Width, surface.Height,
+                    SnapshotBrushSettings() with { Erasing = false }, surface.Pixels);
+                _smudge.WalkTo(docX, docY, surface.Pixels);
+                break;
+
+            case EditorTool.Gradient:
+            case EditorTool.Shape:
+                _toolSurface = surface;
+                _toolBefore = (byte[])surface.Pixels.Clone();
+                _dragAnchor = (docX, docY);
+                _dragLast = (docX, docY);
+                break;
+
+            default:
+                return false;
+        }
+
+        IsStrokeActive = true;
+        return true;
+    }
+
+    /// <summary>Pointer-move dispatch for the active paint tool.</summary>
+    public void ContinueTool(float docX, float docY)
+    {
+        if (!IsStrokeActive || _toolSurface is null)
+        {
+            return;
+        }
+
+        if (Tool == EditorTool.Brush)
+        {
+            ContinueStroke(docX, docY);
+            return;
+        }
+
+        if (_smudge is { } smudge)
+        {
+            smudge.WalkTo(docX, docY, _toolSurface.Pixels);
+            return;
+        }
+
+        if (_toolCoverage is { } coverage && _toolSample is { } sample && _toolBefore is { } before)
+        {
+            coverage.WalkTo(docX, docY);
+            if (Tool == EditorTool.CloneStamp && CloneSource is { } cloneSource)
+            {
+                CloneStampPaint(CloneStroke.OffsetFor(
+                    cloneSource, (docX, docY), _cloneAlignedOffset));
+            }
+            else
+            {
+                coverage.PaintSampleRegion(_toolSurface, before, sample);
+            }
+            return;
+        }
+
+        if (_dragAnchor is not null)
+        {
+            _dragLast = (docX, docY);
+        }
+    }
+
+    /// <summary>Pointer-up dispatch: finalizes and files the undo command.</summary>
+    public bool EndTool()
+    {
+        if (!IsStrokeActive || _toolSurface is null || _toolBefore is null)
+        {
+            return false;
+        }
+
+        if (Tool == EditorTool.Brush)
+        {
+            var ended = EndStroke();
+            _toolSurface = null;
+            _toolBefore = null;
+            IsStrokeActive = false;
+            return ended;
+        }
+
+        var (w, h) = (_toolSurface.Width, _toolSurface.Height);
+        switch (Tool)
+        {
+            case EditorTool.Blur:
+            case EditorTool.CloneStamp:
+                if (_toolCoverage is { } coverage)
+                {
+                    if (Tool == EditorTool.CloneStamp && CloneSource is { } cloneSource && _dragLast is { } lastPoint)
+                    {
+                        CloneStampPaint(CloneStroke.OffsetFor(cloneSource, lastPoint, _cloneAlignedOffset));
+                    }
+                    else if (_toolSample is { } sample)
+                    {
+                        coverage.PaintSampleRegion(_toolSurface, _toolBefore, sample);
+                    }
+                }
+                break;
+
+            case EditorTool.Smudge:
+                _smudge?.Commit(_toolSurface.Pixels);
+                break;
+
+            case EditorTool.Gradient:
+                if (_dragAnchor is { } g0 && _dragLast is { } g1)
+                {
+                    GradientFill.Apply(_toolSurface, g0.X, g0.Y, g1.X, g1.Y,
+                        _brushR, _brushG, _brushB,
+                        (byte)(255 - _brushR), (byte)(255 - _brushG), (byte)(255 - _brushB),
+                        GradientOptions, _toolClip);
+                }
+                break;
+
+            case EditorTool.Shape:
+                if (_dragAnchor is { } s0 && _dragLast is { } s1)
+                {
+                    ShapeRasterizer.Fill(_toolSurface,
+                        MathF.Min(s0.X, s1.X), MathF.Min(s0.Y, s1.Y),
+                        MathF.Abs(s1.X - s0.X), MathF.Abs(s1.Y - s0.Y),
+                        ShapeKind, 0f,
+                        _brushR, _brushG, _brushB, 1f, _toolClip);
+                }
+                break;
+        }
+
+        var bounds = _dragAnchor is { } a && _dragLast is { } l
+            ? BrushStroke.Bounds([a, l], _brushDiameter, w, h)
+            : (0, 0, w, h);
+        History.Push(new RegionCommand(_toolSurface, _toolBefore, bounds));
+        OnHistoryChanged();
+
+        _toolSurface = null;
+        _toolBefore = null;
+        _toolSample = null;
+        _toolCoverage = null;
+        _smudge = null;
+        _dragAnchor = null;
+        _dragLast = null;
+        _toolClip = null;
+        IsStrokeActive = false;
+        RaiseDocumentChanged();
+        return true;
+    }
+
+    private void CloneStampPaint((int Dx, int Dy) offset)
+    {
+        if (_toolSurface is null || _toolBefore is null || _toolSample is null || _toolCoverage is null)
+        {
+            return;
+        }
+        // Rebuild the shifted sample for the current offset, then paint through.
+        var shifted = new byte[_toolSample.Length];
+        for (var y = 0; y < _toolSurface.Height; y++)
+        {
+            var sy = y + offset.Dy;
+            if (sy < 0 || sy >= _toolSurface.Height)
+            {
+                continue;
+            }
+            for (var x = 0; x < _toolSurface.Width; x++)
+            {
+                var sx = x + offset.Dx;
+                if (sx < 0 || sx >= _toolSurface.Width)
+                {
+                    continue;
+                }
+                Array.Copy(_toolSample, ((sy * _toolSurface.Width) + sx) * 4,
+                    shifted, ((y * _toolSurface.Width) + x) * 4, 4);
+            }
+        }
+        _toolCoverage.PaintSampleRegion(_toolSurface, _toolBefore, shifted);
+    }
+
     private byte _brushR = 20, _brushG = 20, _brushB = 20;
     public byte BrushR
     {
@@ -176,7 +454,14 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     private BrushSettings? _strokeSettings;
 
     /// <summary>Which tool the canvas pointer feeds (brush or a selection kind).</summary>
-    public enum EditorTool { Brush, RectangleSelect, EllipseSelect, LassoSelect }
+    public enum EditorTool
+    {
+        Brush, RectangleSelect, EllipseSelect, LassoSelect,
+        MagicWand, Gradient, Shape, Blur, Smudge, CloneStamp,
+    }
+
+    public static bool IsSelectTool(EditorTool tool) =>
+        tool is EditorTool.RectangleSelect or EditorTool.EllipseSelect or EditorTool.LassoSelect;
 
     private EditorTool _tool = EditorTool.Brush;
     public EditorTool Tool

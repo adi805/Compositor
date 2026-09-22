@@ -66,6 +66,12 @@
         <ComboBoxItem>Rect select</ComboBoxItem>
         <ComboBoxItem>Ellipse select</ComboBoxItem>
         <ComboBoxItem>Lasso select</ComboBoxItem>
+        <ComboBoxItem>Magic wand</ComboBoxItem>
+        <ComboBoxItem>Gradient</ComboBoxItem>
+        <ComboBoxItem>Shape</ComboBoxItem>
+        <ComboBoxItem>Blur</ComboBoxItem>
+        <ComboBoxItem>Smudge</ComboBoxItem>
+        <ComboBoxItem>Clone stamp</ComboBoxItem>
       </ComboBox>
       <Separator Width="8" />
       <TextBlock Text="Brush" FontWeight="Bold" VerticalAlignment="Center" />

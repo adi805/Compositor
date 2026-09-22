@@ -268,5 +268,70 @@ public sealed class StrokeCoverage
         }
     }
 
+    /// <summary>
+    /// Paints a sample buffer (same size as the surface, e.g. a blurred or
+    /// cloned copy) through the coverage mask, recomputing from the
+    /// pre-stroke snapshot. Alpha = coverage × opacity × selection factor.
+    /// Sample pixels with alpha 0 contribute nothing.
+    /// </summary>
+    public void PaintSampleRegion(RasterSurface surface, byte[] beforeFull, byte[] sample)
+    {
+        ArgumentNullException.ThrowIfNull(surface);
+        ArgumentNullException.ThrowIfNull(beforeFull);
+        ArgumentNullException.ThrowIfNull(sample);
+        if (beforeFull.Length != surface.Pixels.Length || sample.Length != surface.Pixels.Length)
+        {
+            throw new ArgumentException("Snapshot/sample size mismatch.");
+        }
+        if (_dirty.Width == 0)
+        {
+            return;
+        }
+        var opacity = _settings.Opacity;
+        var paintedAny = false;
+        for (var y = _dirty.Y; y < _dirty.Y + _dirty.Height; y++)
+        {
+            for (var x = _dirty.X; x < _dirty.X + _dirty.Width; x++)
+            {
+                var c = _coverage[(y * _surfaceWidth) + x];
+                if (c == 0)
+                {
+                    continue;
+                }
+                var alpha = (c / 255f) * opacity;
+                if (_clip is { } clip)
+                {
+                    var factor = clip.FactorAt(x, y);
+                    if (factor <= 0f)
+                    {
+                        continue;
+                    }
+                    alpha *= factor;
+                }
+                var i = ((y * _surfaceWidth) + x) * 4;
+                var srcA = (sample[i + 3] / 255f) * alpha;
+                if (srcA <= 0f)
+                {
+                    continue;
+                }
+                var dstA = beforeFull[i + 3] / 255f;
+                var outA = srcA + (dstA * (1f - srcA));
+                if (outA <= 0f)
+                {
+                    continue;
+                }
+                surface.Pixels[i] = ToByte(((sample[i] / 255f * srcA) + (beforeFull[i] / 255f * dstA * (1f - srcA))) / outA * 255f);
+                surface.Pixels[i + 1] = ToByte(((sample[i + 1] / 255f * srcA) + (beforeFull[i + 1] / 255f * dstA * (1f - srcA))) / outA * 255f);
+                surface.Pixels[i + 2] = ToByte(((sample[i + 2] / 255f * srcA) + (beforeFull[i + 2] / 255f * dstA * (1f - srcA))) / outA * 255f);
+                surface.Pixels[i + 3] = ToByte(outA * 255f);
+                paintedAny = true;
+            }
+        }
+        if (paintedAny)
+        {
+            surface.MarkDirty();
+        }
+    }
+
     private static byte ToByte(float v) => (byte)Math.Clamp(v + 0.5f, 0f, 255f);
 }

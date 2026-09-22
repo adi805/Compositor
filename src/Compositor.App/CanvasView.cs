@@ -252,7 +252,7 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
-        if (ViewModel.Tool != EditorViewModel.EditorTool.Brush)
+        if (EditorViewModel.IsSelectTool(ViewModel.Tool))
         {
             if (ViewModel.BeginMarquee(doc.Value.X, doc.Value.Y))
             {
@@ -263,7 +263,7 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
-        if (ViewModel.BeginStroke(doc.Value.X, doc.Value.Y))
+        if (ViewModel.BeginTool(doc.Value.X, doc.Value.Y))
         {
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -316,7 +316,7 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
-        ViewModel.ContinueStroke(doc.Value.X, doc.Value.Y);
+        ViewModel.ContinueTool(doc.Value.X, doc.Value.Y);
         e.Handled = true;
         InvalidateVisual();
     }
@@ -346,7 +346,7 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
-        ViewModel.EndStroke();
+        ViewModel.EndTool();
         e.Pointer.Capture(null);
         e.Handled = true;
         InvalidateVisual();

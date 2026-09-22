@@ -160,3 +160,14 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - StrokeCommand ctor BrushSettings + legacy adapter (radius/rgba/opacity); VM: slider diameter/hardness/opacity + toggle eraser; PaintDotIfNeeded obsolete (WalkTo dab titik pertama langsung)
 - JUJUR: upstream Mac GAK punya knob "flow" terpisah (deposition rate = spacing x falloff) dan GAK ada stylus pressure di jalur paint (pressure cuma di konstruktor event test) - jadi dua-duanya n/a upstream, bukan missing di port
 - Tests: 15 Core (falloff hand-computed, spacing fraction, tip profile, cap, live-vs-final identik, eraser, undo) + 6 App; total 263 (187 Core + 76 App)
+
+## WS8 - Tools - 2026-09-22
+- GradientFill: linear (proyeksi start→end) + radial (pusat start, rim end), 2 stop (fg→bg alpha 1 / fg→fg fade 0), reversed, opacity cap, komposit source-over dari before-snapshot
+- ShapeRasterizer: rectangle + cornerRadius (clamp setengah sisi pendek = pill; ellipse abaikan) + ellipse, coverage 2x2 supersample, clamp radius persis upstream
+- BlurStroke: sigma = clamp(diameter/10, 1.5, 30), sample di ambil saat stroke mulai (re-stroke = makin blur, sesuai upstream), gaussian 3-pass box blur di ruang premultiplied, paint lewat coverage mask
+- CloneStroke: offset source - brush (whole pixel), aligned keep offset antar stroke (re-set saat source baru), sample layer saat stroke mulai, copy lewat coverage
+- SmudgeStroke: carried square (2r+1)² premultiplied, pickUp saat start, dab lerp weight smoothstep t²(3-2t) hardness→rim, keep = strength, spacing max(1, diameter×8%) - port persis upstream; LIQUIFY push warp BELUM (deferred, lihat catatan)
+- MagicWand UI: tool click → flood fill → selection (tolerance 32 default)
+- VM: BeginTool/ContinueTool/EndTool dispatch per tool; RegionCommand undo (before/after region); clone source via SetCloneSource; toolbar 10 tool
+- Tests: 14 Core + 6 App; total 284 (201 Core + 83 App)
+- JUJUR partial: gradient/shape belum live preview saat drag (commit saat release, upstream live pending-edit); liquify warp belum; clone "sample all layers" belum
