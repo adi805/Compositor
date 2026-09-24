@@ -243,6 +243,74 @@ public static class LayerPlacement
     /// canvas. The result is dense over the layer: consumers read it clip-locally, and
     /// after a rotation there is no longer a small rect that would have covered it.
     /// </summary>
+    /// <summary>
+    /// The inverse of <see cref="PlaceMask"/>: a mask in a layer's own pixel space written out on the canvas
+    /// through the layer's transform. Used where a surface-level result (a magic wand's coverage) has to become
+    /// a canvas-space selection, which is the space selections and marching ants live in.
+    /// </summary>
+    /// <remarks>
+    /// Scattered on purpose: a point of the canvas takes the coverage of whichever layer pixel maps onto it.
+    /// That is what keeps the shape the user sees once the layer is drawn back through the same transform. A
+    /// rotated or scaled layer has no exact inverse pixel-for-pixel, so the outline follows the mapping rather
+    /// than being resampled, and untouched canvas stays 0 (nothing selected).
+    /// </remarks>
+    public static byte[] PlaceMaskToDocument(
+        LayerTransform transform,
+        byte[] layerMask,
+        int canvasWidth,
+        int canvasHeight,
+        int layerWidth,
+        int layerHeight)
+    {
+        ArgumentNullException.ThrowIfNull(layerMask);
+        if (layerMask.Length != layerWidth * layerHeight)
+        {
+            throw new ArgumentException(
+                $"Expected {layerWidth * layerHeight} bytes for a {layerWidth}x{layerHeight} mask.",
+                nameof(layerMask));
+        }
+
+        var output = new byte[canvasWidth * canvasHeight];
+        if (canvasWidth <= 0 || canvasHeight <= 0)
+        {
+            return output;
+        }
+
+        var mapper = MapFor(transform, layerWidth, layerHeight, canvasWidth, canvasHeight);
+        if (!mapper.IsValid)
+        {
+            return output;
+        }
+
+        for (var layerY = 0; layerY < layerHeight; layerY++)
+        {
+            for (var layerX = 0; layerX < layerWidth; layerX++)
+            {
+                var value = layerMask[(layerY * layerWidth) + layerX];
+                if (value == 0)
+                {
+                    continue; // nothing selected here, so nothing to write out
+                }
+
+                var (docX, docY) = mapper.ToDocument(layerX + 0.5, layerY + 0.5);
+                var x = (int)Math.Floor(docX);
+                var y = (int)Math.Floor(docY);
+                if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight)
+                {
+                    continue; // the layer pixel lands off the canvas
+                }
+
+                var index = (y * canvasWidth) + x;
+                if (value > output[index])
+                {
+                    output[index] = value;
+                }
+            }
+        }
+
+        return output;
+    }
+
     public static SelectionClip MapClipToLayer(
         LayerTransform transform, SelectionClip clip, int canvasWidth, int canvasHeight,
         int layerWidth, int layerHeight)

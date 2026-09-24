@@ -217,6 +217,26 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// A selection picked in a layer's own pixel space, expressed on the canvas. The mirror of
+    /// <see cref="ClipForLayer"/>: that one pushes a canvas selection into the layer, this one brings a
+    /// layer-space result back out, so the two agree about where the selection is.
+    /// </summary>
+    private DocumentSelection MapSelectionToCanvas(Layer layer, RasterSurface surface, DocumentSelection picked)
+    {
+        if (picked.IsEmpty
+            || (surface.Width == Doc.Width && surface.Height == Doc.Height
+                && LayerPlacement.IsIdentity(layer.Transform, Doc.Width, Doc.Height)))
+        {
+            return picked; // the ordinary case, nothing to map
+        }
+
+        var coverage = LayerPlacement.PlaceMaskToDocument(
+            layer.Transform, picked.RenderCoverage(surface.Width, surface.Height),
+            Doc.Width, Doc.Height, surface.Width, surface.Height);
+        return DocumentSelection.FromCoverage(coverage, Doc.Width, Doc.Height);
+    }
+
+    /// <summary>
     /// Pointer-down dispatch for the paint-family tools (brush, blur, smudge,
     /// clone, gradient, shape). Magic wand is click-once: it selects and
     /// returns. Returns false when the tool did not take the drag.
@@ -225,10 +245,17 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     {
         if (Tool == EditorTool.MagicWand)
         {
-            if (ActiveLayer?.Pixels is { } wandSurface)
+            if (ActiveLayer is { } wandLayer && wandLayer.Pixels is { } wandSurface)
             {
-                Doc.Selection = MagicWand.Select(
-                    wandSurface, (int)docX, (int)docY, WandTolerance, SelectionMode.Replace);
+                // The wand reads the layer's own pixels, so the click has to be taken into that surface first:
+                // on a moved or scaled layer the canvas point is not the pixel the cursor is over.
+                var (seedX, seedY) = LayerPaintPoint(wandLayer, wandSurface, docX, docY);
+                var picked = MagicWand.Select(
+                    wandSurface, (int)seedX, (int)seedY, WandTolerance, SelectionMode.Replace);
+
+                // A selection is drawn on the canvas, so the coverage goes back out through the same mapping.
+                // Without this the selection would sit where the layer used to be.
+                Doc.Selection = MapSelectionToCanvas(wandLayer, wandSurface, picked);
                 RaiseDocumentChanged();
             }
             return false;
@@ -1751,8 +1778,13 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// </summary>
     public RasterSurface? AdjustmentPreviewSurface => _adjustmentPreview;
 
+    /// <summary>
+    /// The clip an adjustment or filter sheet has to respect. Taken in the ACTIVE LAYER's pixel space, the
+    /// same space the brush and the wand work in: the surface a sheet reads and writes is the layer's own
+    /// buffer, so a canvas-space clip would bound the wrong region on a transformed layer.
+    /// </summary>
     public SelectionClip? CurrentAdjustmentClip =>
-        Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
+        ActiveLayer is { Pixels: { } surface } layer ? ClipForLayer(layer, surface) : null;
 
     /// <summary>Replaces the Levels state with an auto strategy computed from the active layer.</summary>
     public void ApplyLevelsAuto(LevelsAuto mode)

@@ -56,7 +56,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | CameraRawDetailOptics.swift | 125 | missing | WS19 |
 | DocumentLimits.swift | 42 | done | WS19: diport jadi `ImageBudget`. 30.000 per sisi, **200 MP per surface**, budget dokumen skala RAM (min 800 MP, max 200 MP, RAM/16) |
 | ToolDefaults.swift | 22 | missing | WS19: preferensi tool yang nempel lintas tab dan lintas launch |
-| MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
+| MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode. WS16: seed diambil di layer space (`LayerPaintPoint`) dan hasilnya dikembalikan ke kanvas (`LayerPlacement.PlaceMaskToDocument`), jadi wand di layer yang digeser/diskala milih pixel yang beneran di bawah kursor, bukan pixel kanvas |
 | ImageAdjustments.swift | 134 | done | WS4+WS9: AdjustmentColor, Exposure, GradientMap, Grain (value-noise lattice + midtone weighting + origin/unitsPerPixel document-space pinning) semua port |
 | DocumentHistory.swift | 119 | partial | UndoHistory ada (per-command); belum edit-group coalescing |
 | GuidedMatte.swift | 118 | partial | WS12. BUKAN ML: guided filter He/Sun/Tang murni aritmatika (box running-sum + slope/offset). Port C# di Core + 10 golden (7eb8cb3). Gap: belum dipanggil SubjectRemoval preset Advanced |
