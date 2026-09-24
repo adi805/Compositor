@@ -41,9 +41,9 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
 | ImageAdjustments.swift | 134 | done | WS4+WS9: AdjustmentColor, Exposure, GradientMap, Grain (value-noise lattice + midtone weighting + origin/unitsPerPixel document-space pinning) semua port |
 | DocumentHistory.swift | 119 | partial | UndoHistory ada (per-command); belum edit-group coalescing |
-| GuidedMatte.swift | 118 | missing | WS12 (ML) |
+| GuidedMatte.swift | 118 | missing | WS12. BUKAN ML: guided filter He/Sun/Tang murni aritmatika (box running-sum + slope/offset). Prasyarat SubjectRemoval preset Advanced |
 | LayerAdjustment.swift | 112 | partial | WS4: AdjustmentKind + settings ported; non-destructive adjustment LAYERS not yet |
-| SubjectRemoval.swift | 110 | missing | WS12 (ML) |
+| SubjectRemoval.swift | 110 | partial | WS12: jalur ONNX terbukti hidup (4 test spike, 365b057). Belum: estimator di App, 4 field setting upstream, commit ke alpha, UI. Lihat seksi WS12 |
 | AdjustmentEditing.swift | 110 | partial | WS4: sheet state + commit/cancel in VM; preview synchronous (no async pipeline) |
 | Gradient.swift | 109 | missing | WS8 |
 | MaskTracing.swift | 92 | missing | WS5 |
@@ -58,7 +58,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | PixelInvert.swift | 46 | done | WS4: straight-alpha invert + selection clip |
 | Curves.swift | 42 | done | WS4: Hermite spline + LUT + curves editor UI |
 | BlurTool.swift | 41 | missing | WS8 |
-| ContentFill.swift | 27 | missing | WS12 (ML) |
+| ContentFill.swift | 27 | missing | WS12. BUKAN ML: wrapper tipis kernel C `Rendering/ContentFill.c` (`content_fill`), pola port sama kayak NoisePixels/LensPixels yang sudah bit-exact |
 
 ## IO (upstream 1.020 LOC)
 
@@ -213,3 +213,47 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - Sisa yang BELUM dari transform: (1) flip tetap di-bake dan flag-nya sengaja DIABAIKAN renderer - v0.1/v0.2 nyimpen pixel bake + flag, jadi menghormati flag tanpa migrasi bikin layer lama ke-flip dobel; ini keputusan kompatibilitas `.comp`, bukan bug kecil. (2) Alat gambar udah di-mapping ke layer space (`LayerPaintPoint` via `Mapper.ToLayer`, dibuktiin `EditorViewModelTransformPaintTests`), TAPI masih ada sisa: magic wand (milih di surface pakai koordinat dokumen) dan clip sheet adjustment (`CurrentAdjustmentClip`) belum di-mapping ke layer space. (3) `TransformOverlay` (handle drag) belum ada, itu WS11 yang paling keliatan.
 - Belum ada padanannya: thumbnail 96px per asset (`ImportedImage.thumbnail`), routing drop ke tab/workspace lain (`ProjectWorkspace`), dan impor sebagai undo step (add/remove layer belum punya command type).
 - Tests: 300 Core (+58) + 122 App (+29) = 422 hijau; build bersih 0 warning; `--smoke` exit 0.
+
+## WS12 - Keputusan ML - 2026-09-25
+
+**Keputusan: jalur ONNX diterima. Tapi ternyata cuma SATU dari tiga item yang butuh model.**
+
+| Item upstream | Sifat aslinya | Jalur Windows | Bukti sekarang |
+|---|---|---|---|
+| `SubjectRemoval.swift` (110) | Apple Vision `VNGenerateForegroundInstanceMaskRequest` + 3 operasi refine (guided filter, shift edge, matte contrast) | `Microsoft.ML.OnnxRuntime` 1.30.0 + bobot U2-Net | Spike hijau di `365b057`: 4 test |
+| `GuidedMatte.swift` (118) | Aritmatika murni. Komentar upstream sendiri bilang `CIGuidedFilter` Core Image tidak ngapa-ngapain di sistemnya, jadi angkanya ditulis manual | Port C# langsung, deterministik, bisa dites angka tangan | belum dikerjakan |
+| `ContentFill.swift` (27) | Bukan ML: wrapper tipis kernel C `Rendering/ContentFill.c`, signature `content_fill(pixels, stride, mask, maskStride, w, h)` | Port kernel, pola persis kayak `NoisePixels`/`LensPixels` yang udah bit-exact | belum dikerjakan |
+
+Jadi "gap ML 255 LOC" yang ditulis dokumen ini selama berhari-hari **salah besarannya**: 145 LOC dari
+tiga file itu adalah matematika dan kernel C biasa. Yang beneran butuh bobot cuma 110 LOC, dan
+prasyarat tampilannya (refine edges) juga bukan ML.
+
+**Urutan yang diputuskan, dan alasannya:**
+
+1. `GuidedMatte` dulu, di Core, tanpa dependency apa pun. Preset Advanced-nya SubjectRemoval memanggil
+   dia, jadi kalau dibelakang hasilnya cuma potongan mask yang potong rambutnya kepotong model.
+2. `ContentFill` kernel. Kecil, terisolasi, dan satu-satunya item yang bisa nutup gap tanpa network apa pun.
+3. `SubjectRemoval` utuh: estimator mask di App (satu-satunya tempat OnnxRuntime boleh dipegang, Core tetap
+   dependency-free), 4 field setting upstream yang belum ada di `FilterSettings` (kualitas basic/advanced,
+   refine edges, shift edge, matte contrast), commit = alpha layer dikali mask dan dibatasi seleksi aktif,
+   preview di-downscale ke limit 1400 px seperti upstream supaya drag slider tetap responsif.
+4. Baru setelah layer mask ada: hasilnya dituang ke **layer mask** seperti upstream (mask lama dikalikan,
+   bukan pixel dirusak). Subsystem mask masih missing sekitar 900 LOC (`LayerMask`, `LiveLayerMask`,
+   `MaskTracing`, `LiveMaskRenderer`, `LayerMaskMenu`), jadi versi pertama SubjectRemoval bersifat destruktif
+   terhadap alpha dan itu dicatat sebagai gap, tidak diklaim sebagai paritas.
+
+**Provenance bobot:** `u2netp.onnx`, 4.574.861 byte, sha256 `309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8`,
+diambil dari release `danielgatis/rembg`. Lisensi U2-Net asli Apache-2.0 (verified 2026-09-24 di repo
+`xuebinqin/U-2-Net`, 9.843 stars; mirror ONNX di HuggingFace juga deklarasikan apache-2.0). File ikut
+ke-commit, jadi repo naik dari 3,2 MB ke sekitar 8 MB; konsekuensinya disadari dan dipilih supaya test-nya
+deterministik dan bisa jalan offline. **Attribution NOTICE untuk app yang shipped belum ditulis dan itu
+wajib sebelum rilis.**
+
+**Yang sengaja TIDAK diklaim:** kualitas. Test spike cuma menjawab "mekanismenya hidup atau tidak", dan itu
+pertanyaan berbeda dari "mask-nya sama bagusnya sama Apple Vision". Sebelum menu Remove Background
+di-enable butuhnya: (a) bandingkan hasil vs Mac di beberapa foto nyata termasuk rambut dan tepi halus,
+(b) kalau u2netp kurang tajam, naik ke u2net (176 MB) atau varian matting yang lebih baru - dan kalau itu
+kejadiannya bobot tidak bisa lagi di-commit, harus diunduh saat runtime dengan digest yang di-pin,
+(c) ukur biaya CPU: belum pernah di-time sama sekali, dan machine user bukan joyboy.
+
+- Tally sesudah WS12 ditulis: done 14 · partial 46 · missing 32 · n/a 3 = 95 baris (SubjectRemoval pindah dari missing ke partial karena jalurnya terbukti; GuidedMatte dan ContentFill tetap missing tapi tidak lagi dicap ML).
