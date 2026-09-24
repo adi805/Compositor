@@ -121,8 +121,7 @@ public class FilterTests
 
     [Theory]
     [InlineData(FilterKind.RemoveBackground)]
-    [InlineData(FilterKind.ContentAwareFill)]
-    public void AutomaticFiltersFailLoudlyUntilTheMLWorkstream(FilterKind kind)
+    public void AutomaticFiltersFailLoudlyUntilTheirGapsClose(FilterKind kind)
     {
         // Upstream runs these through Vision. A stub must refuse, not quietly return the input.
         Assert.Throws<NotSupportedException>(() =>
@@ -541,5 +540,27 @@ public class FilterTests
         var before = (byte[])source.Pixels.Clone();
         FilterRunner.Apply(FilterKind.GaussianBlur, source, new FilterSettings { Radius = 3 }, null);
         Assert.Equal(before, source.Pixels);
+    }
+
+    [Fact]
+    public void ContentAwareFillRunsThroughTheFilterRunnerAndInventsNothing()
+    {
+        // The runner path is the one a settings sheet would use, so it has to work too. On a
+        // flat image the only thing a copy can produce is that same flat colour: a result that
+        // differs anywhere would mean the kernel invented a pixel.
+        const int size = 15;
+        var surface = new RasterSurface(size, size);
+        for (var i = 0; i < surface.Pixels.Length; i += 4)
+        {
+            surface.Pixels[i] = 200;
+            surface.Pixels[i + 1] = 20;
+            surface.Pixels[i + 2] = 20;
+            surface.Pixels[i + 3] = 255;
+        }
+
+        var clip = DocumentSelection
+            .FromShape(SelectionShape.Rectangle(7, 7, 1, 1, SelectionMode.Replace)).Clip(size, size);
+        var result = FilterRunner.Apply(FilterKind.ContentAwareFill, surface, new FilterSettings(), clip);
+        Assert.Equal(surface.Pixels, result.Pixels);
     }
 }

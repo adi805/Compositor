@@ -1885,5 +1885,46 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         return true;
     }
 
+    /// <summary>
+    /// Fills the current selection with matching pixels from around it (upstream's Content
+    /// Fill). One undoable command, and no sheet: upstream has no settings for it either, the
+    /// kernel just runs.
+    /// </summary>
+    /// <returns>
+    /// False when there is nothing to fill, nothing to fill from, or a sheet is open. The
+    /// layer is untouched in every one of those cases.
+    /// </returns>
+    public bool ContentAwareFill()
+    {
+        if (OpenAdjustment is not null || OpenFilter is not null || Floating is not null)
+        {
+            return false;
+        }
+
+        var layer = ActiveLayer;
+        if (layer is null || layer.IsLocked)
+        {
+            return false;
+        }
+
+        if (Doc.Selection is not { IsEmpty: false } selection)
+        {
+            return false;
+        }
+
+        layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
+        var surface = layer.Pixels;
+        var after = (byte[])surface.Pixels.Clone();
+        if (!Core.Imaging.ContentFill.Fill(after, surface.Width, surface.Height, selection.Clip(surface.Width, surface.Height)))
+        {
+            return false;
+        }
+
+        var before = (byte[])surface.Pixels.Clone();
+        History.Push(new AdjustmentCommand(surface, before, after, "ContentAwareFill"));
+        RaiseDocumentChanged();
+        return true;
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 }

@@ -59,8 +59,8 @@
         <MenuItem Header="Add _Noise..." Click="OnFilterAddNoise" />
         <MenuItem Header="Lens _Correction..." Click="OnFilterLensCorrection" />
         <Separator />
-        <MenuItem Header="Remove _Background..." IsEnabled="False" ToolTip.Tip="Needs the ML workstream (upstream uses Apple Vision)" />
-        <MenuItem Header="Content-_Aware Fill..." IsEnabled="False" ToolTip.Tip="Needs the ML workstream (upstream uses Apple Vision)" />
+        <MenuItem Header="Remove _Background..." IsEnabled="False" ToolTip.Tip="Modelnya sudah terbukti jalan, tapi hasilnya belum diukur terhadap Vision dan commit-nya butuh layer mask (belum ada). Lihat docs/PARITY.md seksi WS12." />
+        <MenuItem Header="Content-_Aware Fill..." Click="OnContentAwareFill" InputGesture="Ctrl+Shift+F" />
       </MenuItem>
       <MenuItem Header="Ima_ge">
         <MenuItem Header="_Image Size..." Click="OnImageSize" />

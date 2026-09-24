@@ -58,7 +58,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | PixelInvert.swift | 46 | done | WS4: straight-alpha invert + selection clip |
 | Curves.swift | 42 | done | WS4: Hermite spline + LUT + curves editor UI |
 | BlurTool.swift | 41 | missing | WS8 |
-| ContentFill.swift | 27 | missing | WS12. BUKAN ML: wrapper tipis kernel C `Rendering/ContentFill.c` (`content_fill`), pola port sama kayak NoisePixels/LensPixels yang sudah bit-exact |
+| ContentFill.swift | 27 | partial | WS12: kernel `Rendering/ContentFill.c` diport ke `src/Compositor.Core/Imaging/ContentFill.cs` (seed LCG tetap, urutan draw dijaga persis), menu Content-Aware Fill aktif sebagai satu undo step. Gap: clip seleksi masih koordinat kanvas, hasil belum dibandingkan dengan keluaran Mac |
 
 ## IO (upstream 1.020 LOC)
 
@@ -130,7 +130,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 ## Ringkasan
 
 - Setelah WS10: done 14 · partial 41 · missing 32 · n/a 3 = 90 baris matriks.
-- **Koreksi audit 2026-09-24, denominator berubah: 95 baris** (done 14 · partial 45 · missing 33 · n/a 3). Yang salah bukan status fitur, tapi angka sumbernya: baris "282 file Swift, 24.018 LOC" di kepala dokumen itu tercampur kloningan `Revan67/Compositor-Windows` yang hidup di `compositor/win/` (141 file Swift, 24.018 LOC). Target sejati = 92 file, 16.755 LOC. Cross-check daftar file vs nama yang disebut baris nemu 4 file / 912 LOC yang tidak pernah mewakili apa pun: ContentView (386), CompositorApp (270), EditorSession+Brush (201), EditorSession+Projects (55). Keempatnya sekarang punya baris, plus satu kapabilitas yang sebelumnya tidak tercatat sama sekali: **Auto-update (Sparkle)**, yang di Windows butuh mekanisme sendiri dan belum masuk plan. Cara ceknya (wajib diulang tiap workstream): daftarkan `find Compositor/Compositor -name '*.swift'`, potong ekstensinya, lalu cari yang namanya tidak muncul di badan matriks. Ekstensi Swift boleh pakai `+` di nama (`EditorSession+Brush`), jadi pola nama yang cuma mengizinkan alfanumerik akan melaporkan cakupan 0% yang palsu.
+- **Koreksi audit 2026-09-24, denominator berubah: 95 baris** (done 14 · partial 47 · missing 31 · n/a 3). Yang salah bukan status fitur, tapi angka sumbernya: baris "282 file Swift, 24.018 LOC" di kepala dokumen itu tercampur kloningan `Revan67/Compositor-Windows` yang hidup di `compositor/win/` (141 file Swift, 24.018 LOC). Target sejati = 92 file, 16.755 LOC. Cross-check daftar file vs nama yang disebut baris nemu 4 file / 912 LOC yang tidak pernah mewakili apa pun: ContentView (386), CompositorApp (270), EditorSession+Brush (201), EditorSession+Projects (55). Keempatnya sekarang punya baris, plus satu kapabilitas yang sebelumnya tidak tercatat sama sekali: **Auto-update (Sparkle)**, yang di Windows butuh mekanisme sendiri dan belum masuk plan. Cara ceknya (wajib diulang tiap workstream): daftarkan `find Compositor/Compositor -name '*.swift'`, potong ekstensinya, lalu cari yang namanya tidak muncul di badan matriks. Ekstensi Swift boleh pakai `+` di nama (`EditorSession+Brush`), jadi pola nama yang cuma mengizinkan alfanumerik akan melaporkan cakupan 0% yang palsu.
 - Pembanding jujur: port Windows independen lain (Revan67/Compositor-Windows; C#, Avalonia 12, SkiaSharp 3.119, .NET 10; fase 1 selesai dengan 114 test; kernel C upstream dipakai ulang tanpa perubahan) memang ada dan **sengaja tidak mengikuti app Mac** serta memakai format proyek sendiri. Artinya "100% paritas" belum dicapai siapa pun, dan sisa pekerjaannya mirip: fase 3-4 mereka adalah seleksi/brush/retouch/filters, remove-background ONNX, updater, dan installer. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
 - Urut dependensi (workstream plan): WS2 blend engine → WS3 selection → WS4 adjustments → WS5 layer power → WS6 geometry → WS7 brush v2 → WS8 tools → WS9 filters → WS10 IO/UX → WS11 rendering perf → WS12 ML decision → WS13 release.
 - Catatan jujur: SubjectRemoval/ContentFill/GuidedMatte di Mac pakai Apple Vision ML. Paritas di Windows berarti ONNX Runtime + model terbuka; keputusan arsitektur di WS12, hasilnya di-update di matriks ini.
@@ -221,8 +221,8 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | Item upstream | Sifat aslinya | Jalur Windows | Bukti sekarang |
 |---|---|---|---|
 | `SubjectRemoval.swift` (110) | Apple Vision `VNGenerateForegroundInstanceMaskRequest` + 3 operasi refine (guided filter, shift edge, matte contrast) | `Microsoft.ML.OnnxRuntime` 1.30.0 + bobot U2-Net | Spike hijau di `365b057`: 4 test |
-| `GuidedMatte.swift` (118) | Aritmatika murni. Komentar upstream sendiri bilang `CIGuidedFilter` Core Image tidak ngapa-ngapain di sistemnya, jadi angkanya ditulis manual | Port C# langsung, deterministik, bisa dites angka tangan | belum dikerjakan |
-| `ContentFill.swift` (27) | Bukan ML: wrapper tipis kernel C `Rendering/ContentFill.c`, signature `content_fill(pixels, stride, mask, maskStride, w, h)` | Port kernel, pola persis kayak `NoisePixels`/`LensPixels` yang udah bit-exact | belum dikerjakan |
+| `GuidedMatte.swift` (118) | Aritmatika murni. Komentar upstream sendiri bilang `CIGuidedFilter` Core Image tidak ngapa-ngapain di sistemnya, jadi angkanya ditulis manual | Port C# langsung, deterministik, bisa dites angka tangan | dipindah ke Core dengan 10 golden (7eb8cb3), belum dipanggil SubjectRemoval |
+| `ContentFill.swift` (27) | Bukan ML: wrapper tipis kernel C `Rendering/ContentFill.c`, signature `content_fill(pixels, stride, mask, maskStride, w, h)` | Port kernel, pola persis kayak `NoisePixels`/`LensPixels` yang udah bit-exact | port kernel + menu aktif, 7 golden Core + 5 test App |
 
 Jadi "gap ML 255 LOC" yang ditulis dokumen ini selama berhari-hari **salah besarannya**: 145 LOC dari
 tiga file itu adalah matematika dan kernel C biasa. Yang beneran butuh bobot cuma 110 LOC, dan
@@ -256,4 +256,4 @@ di-enable butuhnya: (a) bandingkan hasil vs Mac di beberapa foto nyata termasuk 
 kejadiannya bobot tidak bisa lagi di-commit, harus diunduh saat runtime dengan digest yang di-pin,
 (c) ukur biaya CPU: belum pernah di-time sama sekali, dan machine user bukan joyboy.
 
-- Tally sesudah WS12 ditulis: done 14 · partial 46 · missing 32 · n/a 3 = 95 baris (SubjectRemoval pindah dari missing ke partial karena jalurnya terbukti; GuidedMatte dan ContentFill tetap missing tapi tidak lagi dicap ML).
+- Tally sesudah WS12 ditulis: done 14 · partial 47 · missing 31 · n/a 3 = 95 baris (SubjectRemoval pindah dari missing ke partial karena jalurnya terbukti; GuidedMatte dan ContentFill tetap missing tapi tidak lagi dicap ML).

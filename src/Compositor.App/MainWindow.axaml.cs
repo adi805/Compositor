@@ -886,6 +886,8 @@ public partial class MainWindow : Window
 
     private void OnInvertColors(object? sender, RoutedEventArgs e) => Vm?.ApplyInvert();
 
+    private void OnContentAwareFill(object? sender, RoutedEventArgs e) => Vm?.ContentAwareFill();
+
     // Geometry sheets: image size / canvas size / crop -------------------------
 
     private void ShowGeometrySheet(string title, params Avalonia.Controls.Control[] toShow)

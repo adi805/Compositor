@@ -34,10 +34,10 @@ public static class FilterRunner
         ArgumentNullException.ThrowIfNull(surface);
         ArgumentNullException.ThrowIfNull(settings);
         var s = settings.Normalize();
-        if (kind is FilterKind.RemoveBackground or FilterKind.ContentAwareFill)
+        if (kind is FilterKind.RemoveBackground)
         {
             throw new NotSupportedException(
-                $"{kind} needs the ML workstream (upstream uses Apple Vision); it is not available yet.");
+                "RemoveBackground needs a measured subject matte and the layer-mask subsystem; it is not available yet.");
         }
 
         RasterSurface result;
@@ -81,6 +81,17 @@ public static class FilterRunner
 
                 var k = (s.Distortion / 100.0) * LensStrength;
                 FilterKernels.LensDistort(surface.Pixels, result.Pixels, surface.Width, surface.Height, k);
+                break;
+            }
+
+            case FilterKind.ContentAwareFill:
+            {
+                // The selection names the hole, not the editable area. Everything outside it is
+                // left alone by the blend below, and the kernel never writes there anyway, so a
+                // failed fill returns the layer as it was.
+                result = new RasterSurface(surface.Width, surface.Height);
+                Array.Copy(surface.Pixels, result.Pixels, surface.Pixels.Length);
+                Imaging.ContentFill.Fill(result.Pixels, surface.Width, surface.Height, selection ?? SelectionClip.Empty);
                 break;
             }
 
