@@ -146,3 +146,12 @@ Acceptance:
 - Format manifest v2 (parentUUID/isGroup)
 - Tests: 148 Core + 59 App = 207 green; smoke OK
 - Known gaps: interactive drag transform (WS11), layer masks (WS9/terpisah), drag-reorder panel
+
+## Tech stack refresh - 2026-09-24
+- Avalonia 11.2.7 → 11.3.22 (all four packages + Headless.XUnit). Reason is measured, not cosmetic: 11.2.7 exposes only SetAllowDrop/GetAllowDrop/DoDragDrop on `DragDrop`; 11.3.22 adds AddDropHandler/AddDragOverHandler/DoDragDropAsync and `IDataTransfer`/`TryGetFiles`, which Task 10's file-drop needs and which the official docs describe as the only drop API
+- Test stack: xunit 2.7.0 → 2.9.3, xunit.runner.visualstudio 2.5.7 → 3.1.5, Microsoft.NET.Test.Sdk 17.9.0 → 17.14.1
+- Verified locally with obj/ + bin/ deleted: build 0 warnings 0 errors, 201 Core + 83 App = 284 green, smoke exit 0
+- Held back deliberately: Avalonia 12.1.3 (needs Diagnostics API rename + moves SkiaSharp 2.88 → 3.x, buys nothing for the remaining parity tasks; revisit after the matrix is green)
+- Flagged: `net8.0` reaches EOL 2026-11-10, same date as net9. net10.0 is the LTS (2028-11-14) → the TFM bump is required before Task 13's v1.0
+- Free win found: SkiaSharp 2.88.9 is already in the tree via Avalonia.Skia and exposes `SKImage.Encode(SKEncodedImageFormat, int)` → Task 10's JPEG export does not require a hand-written JPEG encoder
+- See `docs/TECH-STACK.md` for the pin table, the docs-version trap, and the verify commands

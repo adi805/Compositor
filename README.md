@@ -13,11 +13,13 @@ This repo rebuilds Compositor as a cross-platform .NET 8 application:
 
 | Layer | Upstream (Mac) | This port (Windows) |
 |---|---|---|
-| UI | AppKit + SwiftUI | Avalonia 11 |
-| Image engine | CoreImage / CoreGraphics | Pure C# raster (SkiaSharp planned) |
-| Fast kernels | C + Accelerate / vImage | Planned: C via P/Invoke |
-| ML features | Vision framework | Planned: ONNX Runtime |
+| UI | AppKit + SwiftUI | Avalonia 11.3 |
+| Image engine | CoreImage / CoreGraphics | Pure C# raster; SkiaSharp 2.88 is already in the tree via Avalonia.Skia and is the planned codec/filter backend (see `docs/TECH-STACK.md`) |
+| Fast kernels | C + Accelerate / vImage | C# ports of upstream's C kernels, bit-exact |
+| ML features | Vision framework | Planned: ONNX Runtime 1.30 |
 | Document format | `.comp` spec v6 | Zip `.comp` v1 = upstream v6 subset, additive |
+
+Pinned versions, why each one, and the verification commands: `docs/TECH-STACK.md`.
 
 Goal: same document model, same editing semantics, compatible file format. Not a UI clone.
 
@@ -71,6 +73,8 @@ tests/
   Compositor.App.Tests/   View-model tests + headless Avalonia UI tests
 docs/
   ROADMAP.md              Phased plan with acceptance criteria per phase
+  PARITY.md               Feature-by-feature parity matrix vs upstream (the contract)
+  TECH-STACK.md           Pinned versions, why, and how to verify them
   RESEARCH.md             Upstream spec extraction + our design decisions
   upstream-project-format.md  Upstream .comp format spec (v1-6)
 ```
