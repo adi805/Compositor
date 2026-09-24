@@ -24,9 +24,9 @@ public static class Flatten
                 continue; // hidden or blank layers contribute nothing
             }
 
-            if (src.Width != doc.Width || src.Height != doc.Height)
+            if (src.Width <= 0 || src.Height <= 0)
             {
-                continue; // v1: full-canvas surfaces only
+                continue; // nothing to draw
             }
 
             var opacity = Math.Clamp(layer.Opacity, 0.0, 1.0);
@@ -38,6 +38,8 @@ public static class Flatten
             // Position, size and rotation are a display transform (upstream's CTM), so the
             // surface is resampled onto its placement rect. An untransformed layer gets its
             // own buffer back with no copy, so the common path stays byte-identical.
+            // A surface of any size is placed, not skipped: an imported image or a resized
+            // layer is drawn on the canvas, and the export has to agree with the canvas.
             var srcPx = LayerPlacement.Place(
                 layer.Transform, src.Pixels, src.Width, src.Height, doc.Width, doc.Height);
             var mode = layer.Blend;

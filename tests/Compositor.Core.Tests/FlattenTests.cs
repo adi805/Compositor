@@ -85,4 +85,33 @@ public sealed class FlattenTests
         Assert.Equal(50, rgba[2]);
         Assert.Equal(128, rgba[3]);
     }
+
+    [Fact]
+    public void ToRgba_PlacesALayerSmallerThanTheCanvas()
+    {
+        // A layer whose surface is smaller than the canvas is drawn on the canvas, so it must appear in the
+        // export too. This used to be skipped outright ("full-canvas surfaces only"), which made an imported
+        // image visible in the window and absent from the saved file.
+        var doc = new Document(64, 64);
+        var layer = new Layer("Small");
+        var pixels = new byte[16 * 16 * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i + 3] = 255;
+        }
+
+        layer.Pixels = new RasterSurface(16, 16, pixels);
+        layer.Transform = new LayerTransform(20, 10, 16, 16, 0, false, false);
+        doc.AddLayer(layer);
+
+        var (width, height, rgba) = Flatten.ToRgba(doc);
+
+        Assert.Equal(64, width);
+        Assert.Equal(64, height);
+        Assert.Equal(255, rgba[((15 * width) + 25) * 4 + 3]);      // inside the placement rect
+        Assert.Equal(255, rgba[((10 * width) + 20) * 4 + 3]);      // its top-left corner
+        Assert.Equal(0, rgba[((9 * width) + 25) * 4 + 3]);         // one row above it
+        Assert.Equal(0, rgba[((15 * width) + 19) * 4 + 3]);        // one column left of it
+    }
 }
