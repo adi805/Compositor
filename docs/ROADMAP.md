@@ -171,5 +171,5 @@ Acceptance:
 - Cap satu aturan buat dua arah: 1..30000 per sisi + 100MP, dihitung ulang per file pas impor batch
 - Format matrix jadi kontrak, bukan komentar: filter dialog, pesan "unsupported", dan daftar gap semuanya dibaca dari situ; tiap baris impor dibuktiin test pake fixture nyata dari Pillow/ffmpeg
 - Drop file ke canvas = impor, dengan drop point sebagai posisi; gambar tanpa file (screenshot, drag dari browser) tetep kebaca tanpa nyentuh disk
-- Known gaps yang ditulis terang: TIFF + HEIC butuh codec di luar Skia build ini, thumbnail asset 96px belum dibuat, impor belum jadi undo step, dan export masih ignore `Layer.Transform` (dibeton di WS11)
+- Known gaps yang ditulis terang: TIFF + HEIC butuh codec di luar Skia build ini, thumbnail asset 96px belum dibuat, impor belum jadi undo step, dan `Layer.Transform` masih diignore layout render MAUPUN composit export (scale/rotate typed UI belum ngaruh; flip keliatan bener karena bake) = urusan WS11 plus keputusan migrasi `.comp`
 - Tests: 300 Core + 122 App = 422 hijau; CI harus tetep hijau di commit ini

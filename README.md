@@ -38,7 +38,7 @@ Goal: same document model, same editing semantics, compatible file format. Not a
 
 **Known limits:**
 
-- Export and flatten ignore `Layer.Transform` (the canvas honours it), so a scaled or rotated layer exports differently from how it looks. Fixed with transform-aware compositing in WS11.
+- Layer transforms are inert for pixel layers on BOTH sides: the canvas draws a pixel layer into the full canvas rect (`CanvasView` calls `DrawImage(bitmap, canvasRect)`; `Scaled(...)` is only used for blank-layer placeholders) and `Flatten`/`CompositeStack` ignore the transform too. So the typed Scale%/Rotate fields change the model without changing anything you can see. Flip does look correct because v0.2 bakes the pixels, while upstream renders flips through the transform flag instead. Making rendering transform-driven is WS11, and it needs a format decision first: files saved by v0.1/v0.2 hold baked pixels AND the flip flag, so honoring the flag without a migration double-flips them.
 - TIFF and HEIC import need a codec beyond the shipped Skia build; upstream reads both through ImageIO. Documented per row in `docs/PARITY.md`.
 - Import is not an undo step yet: layer add/remove has no command type (upstream wraps a batch in one edit).
 - Imported images are baked into a canvas-sized surface; upstream places them with a transform, so a partially-off-canvas drop clips instead of hanging off the edge.
