@@ -75,4 +75,36 @@ public readonly record struct LayerTransform(
         horizontally
             ? new LayerTransform(2 * axis - CenterX - Width / 2, OriginY, Width, Height, -RotationDegrees, !FlipH, FlipV)
             : new LayerTransform(OriginX, 2 * axis - CenterY - Height / 2, Width, Height, -RotationDegrees, FlipH, !FlipV);
+
+    /// <summary>Rotation in radians.</summary>
+    public double Radians => RotationDegrees * Math.PI / 180.0;
+
+    /// <summary>
+    /// Whether a document point is inside the box, rotation included: the point is taken into the box's own
+    /// frame and compared against the half extents (upstream LayerTransform.contains(_:)).
+    /// </summary>
+    public bool Contains(double x, double y)
+    {
+        var dx = x - CenterX;
+        var dy = y - CenterY;
+        var cos = Math.Cos(Radians);
+        var sin = Math.Sin(Radians);
+        return Math.Abs(dx * cos + dy * sin) <= Width / 2
+            && Math.Abs(-dx * sin + dy * cos) <= Height / 2;
+    }
+
+    /// <summary>
+    /// Where a point of the box's own unit square lands in document pixels: (0,0) is the
+    /// top-left corner, (1,1) the bottom-right, (0.5,0.5) the centre. The unit square is
+    /// measured from the centre and then spun by the rotation, so a rotated layer's
+    /// corners come out where they are drawn (upstream LayerTransform.point(_:)).
+    /// </summary>
+    public (double X, double Y) Point(double unitX, double unitY)
+    {
+        var x = (unitX - 0.5) * Width;
+        var y = (unitY - 0.5) * Height;
+        var cos = Math.Cos(Radians);
+        var sin = Math.Sin(Radians);
+        return (CenterX + x * cos - y * sin, CenterY + x * sin + y * cos);
+    }
 }

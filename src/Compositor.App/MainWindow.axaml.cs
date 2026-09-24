@@ -634,6 +634,7 @@ public partial class MainWindow : Window
             "Blur" => EditorViewModel.EditorTool.Blur,
             "Smudge" => EditorViewModel.EditorTool.Smudge,
             "Clone stamp" => EditorViewModel.EditorTool.CloneStamp,
+            "Move" => EditorViewModel.EditorTool.Move,
             _ => EditorViewModel.EditorTool.Brush,
         };
     }

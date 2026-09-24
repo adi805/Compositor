@@ -518,6 +518,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     {
         Brush, RectangleSelect, EllipseSelect, LassoSelect,
         MagicWand, Gradient, Shape, Blur, Smudge, CloneStamp,
+        Move,
     }
 
     public static bool IsSelectTool(EditorTool tool) =>
@@ -1036,6 +1037,174 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         Selected = Rows.FirstOrDefault(r => r.Id == Selected?.Id) ?? Selected;
         OnHistoryChanged();
         RaiseDocumentChanged();
+    }
+
+    // MARK: Transform drag
+    //
+    // Dragging a handle on the box writes LayerTransform directly, and only the finished drag becomes one undo
+    // step. Upstream does the same: the drag edits a draft, and committing it is a single SetLayerTransform.
+
+    private LayerTransform? _dragOriginal;
+    private LayerTransform _dragBox;
+    private double _dragStartX;
+    private double _dragStartY;
+    private TransformDragMode _dragMode;
+    private int _dragIndex;
+
+    /// <summary>True while a handle is being dragged.</summary>
+    public bool IsTransformDragActive => _dragOriginal is not null;
+
+    /// <summary>
+    /// Document pixels per screen pixel at the current zoom, or 1 when the canvas is not laid out yet.
+    /// The grab radius is authored in screen pixels, so it converts through this.
+    /// </summary>
+    public double DocPerScreenPixel(double viewportW, double viewportH)
+    {
+        var r = CanvasRect(viewportW, viewportH);
+        return r.W > 0 ? Doc.Width / r.W : 1.0;
+    }
+
+    /// <summary>
+    /// Screen to document coordinates without the canvas bound: the transform box and its handles sit outside
+    /// the canvas too, and those have to stay grabbable.
+    /// </summary>
+    public (double X, double Y) ScreenToDocUnclamped(double sx, double sy, double viewportW, double viewportH)
+    {
+        var r = CanvasRect(viewportW, viewportH);
+        if (r.W <= 0 || r.H <= 0)
+        {
+            return (0, 0);
+        }
+
+        return ((sx - r.X) * Doc.Width / r.W, (sy - r.Y) * Doc.Height / r.H);
+    }
+
+    /// <summary>
+    /// The box a drag actually works on. A fresh blank layer carries a zero-size transform meaning "cover the
+    /// whole canvas", which rendering resolves at draw time; taken literally its eight handles would all sit on
+    /// one point, so it is resolved here too. A drag then writes back a real box, which is what a moved layer
+    /// should carry.
+    /// </summary>
+    private LayerTransform DragBox(LayerTransform transform)
+        => transform.CoversCanvas ? LayerTransform.ForCanvas(Doc.Width, Doc.Height) : transform;
+
+    /// <summary>
+    /// Grabs a handle under the pointer and starts a drag. False when the move tool is not active, no layer is
+    /// selected, or the pointer is not on a handle.
+    /// </summary>
+    public bool BeginTransformDrag(double docX, double docY, double viewportW, double viewportH)
+    {
+        if (Tool != EditorTool.Move || ActiveLayer is not { } layer)
+        {
+            return false;
+        }
+
+        var box = DragBox(layer.Transform);
+        var perPixel = DocPerScreenPixel(viewportW, viewportH);
+        var hit = TransformHandles.Hit(
+            box, docX, docY,
+            TransformHandles.ScreenGrabRadius * perPixel,
+            TransformHandles.RotationHandleScreenOffset * perPixel);
+        if (hit.IsNone)
+        {
+            // Not on a handle: pressing inside the box drags the whole layer, as the move tool does upstream.
+            if (!box.Contains(docX, docY))
+            {
+                return false;
+            }
+
+            hit = new TransformHit(TransformDragMode.Move, 0);
+        }
+
+        _dragOriginal = layer.Transform;
+        _dragBox = box;
+        _dragStartX = docX;
+        _dragStartY = docY;
+        _dragMode = hit.Mode;
+        _dragIndex = hit.Index;
+        return true;
+    }
+
+    /// <summary>
+    /// The drag so far, applied to the layer as it goes so the canvas follows the pointer. No undo step is
+    /// pushed until the drag ends.
+    /// </summary>
+    public void ContinueTransformDrag(double docX, double docY, bool shift = false, bool fromCenter = false)
+    {
+        if (_dragOriginal is null || ActiveLayer is not { } layer)
+        {
+            return;
+        }
+
+        var box = _dragBox;
+        var next = _dragMode switch
+        {
+            TransformDragMode.Move => TransformDrag.Move(box, _dragStartX, _dragStartY, docX, docY, shift),
+            TransformDragMode.Rotate => TransformDrag.Rotate(box, _dragStartX, _dragStartY, docX, docY, shift),
+            _ => TransformDrag.Resize(box, _dragIndex, _dragStartX, _dragStartY, docX, docY,
+                                      lockRatio: false, shift: shift, fromCenter: fromCenter),
+        };
+
+        if (next == layer.Transform)
+        {
+            return;
+        }
+
+        layer.Transform = next;
+        RaiseDocumentChanged();
+        OnPropertyChanged(nameof(ActiveScalePercent));
+        OnPropertyChanged(nameof(ActiveRotation));
+    }
+
+    /// <summary>
+    /// Ends the drag and records it as one undo step, on whole pixels and whole degrees. False when nothing
+    /// moved, so a click on a handle does not leave a no-op in the history.
+    /// </summary>
+    public bool EndTransformDrag()
+    {
+        if (_dragOriginal is not { } original || ActiveLayer is not { } layer)
+        {
+            _dragOriginal = null;
+            return false;
+        }
+
+        _dragOriginal = null;
+
+        // Compared against the layer's own value, not the resolved box: a click that never moved the box must
+        // not leave an undo step, and a cover-canvas transform must not be turned into a 1x1 one by rounding.
+        if (layer.Transform == original)
+        {
+            RaiseDocumentChanged();
+            return false;
+        }
+
+        var settled = layer.Transform.Rounded();
+
+        // Put the layer back before constructing the command: it captures the transform it finds as the state
+        // undo returns to, so leaving the dragged value in place would make undo a no-op.
+        layer.Transform = original;
+
+        PushAndRefresh(new SetLayerTransformCommand(layer, settled));
+        OnPropertyChanged(nameof(ActiveScalePercent));
+        OnPropertyChanged(nameof(ActiveRotation));
+        return true;
+    }
+
+    /// <summary>
+    /// Where to draw the box's handles, in document pixels, plus the rotation handle. Null when the move tool
+    /// is not active or no layer is selected.
+    /// </summary>
+    public ((double X, double Y)[] Handles, (double X, double Y) Rotation)? TransformOverlay(double viewportW, double viewportH)
+    {
+        if (Tool != EditorTool.Move || ActiveLayer is not { } layer)
+        {
+            return null;
+        }
+
+        var perPixel = DocPerScreenPixel(viewportW, viewportH);
+        var box = DragBox(layer.Transform);
+        return (TransformHandles.Points(box),
+                TransformHandles.RotationHandle(box, TransformHandles.RotationHandleScreenOffset * perPixel));
     }
 
     public double ActiveOpacity

@@ -117,7 +117,8 @@ public sealed class CanvasView : Control, ICustomHitTest
 
         // Layers can now be moved or magnified past the canvas edge; everything they paint
         // outside it belongs to the ruler/checker area, so the stack is clipped to the canvas.
-        using var canvasClip = context.PushClip(canvasRect);
+        // Disposed before the overlays below: the transform handles sit outside the canvas and have to show.
+        var canvasClip = context.PushClip(canvasRect);
         var tint = 0;
         foreach (var layer in LayerHierarchy.VisibleLayers(ViewModel.Doc.Layers))
         {
@@ -169,8 +170,10 @@ public sealed class CanvasView : Control, ICustomHitTest
             tint++;
         }
 
+        canvasClip.Dispose();
 
         RenderSelectionOverlay(context, canvasRect);
+        RenderTransformOverlay(context, canvasRect);
     }
 
     private WriteableBitmap? _floatingBitmap;
@@ -279,6 +282,20 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
+        if (ViewModel.Tool == EditorViewModel.EditorTool.Move)
+        {
+            var grab = ViewModel.ScreenToDocUnclamped(
+                e.GetPosition(this).X, e.GetPosition(this).Y, Bounds.Width, Bounds.Height);
+            if (ViewModel.BeginTransformDrag(grab.X, grab.Y, Bounds.Width, Bounds.Height))
+            {
+                e.Pointer.Capture(this);
+                e.Handled = true;
+                InvalidateVisual();
+            }
+
+            return;
+        }
+
         if (EditorViewModel.IsSelectTool(ViewModel.Tool))
         {
             if (ViewModel.BeginMarquee(doc.Value.X, doc.Value.Y))
@@ -312,6 +329,19 @@ public sealed class CanvasView : Control, ICustomHitTest
             ViewModel.PanBy(pos.X - last.X, pos.Y - last.Y);
             _panLast = pos;
             e.Handled = true;
+            return;
+        }
+
+        if (ViewModel.IsTransformDragActive)
+        {
+            var pos = e.GetPosition(this);
+            var grab = ViewModel.ScreenToDocUnclamped(pos.X, pos.Y, Bounds.Width, Bounds.Height);
+            ViewModel.ContinueTransformDrag(
+                grab.X, grab.Y,
+                shift: e.KeyModifiers.HasFlag(KeyModifiers.Shift),
+                fromCenter: e.KeyModifiers.HasFlag(KeyModifiers.Alt));
+            e.Handled = true;
+            InvalidateVisual();
             return;
         }
 
@@ -359,6 +389,15 @@ public sealed class CanvasView : Control, ICustomHitTest
             return;
         }
 
+        if (ViewModel?.IsTransformDragActive == true)
+        {
+            ViewModel.EndTransformDrag();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            InvalidateVisual();
+            return;
+        }
+
         if (ViewModel?.IsMarqueeActive == true)
         {
             ViewModel.EndMarquee();
@@ -382,6 +421,43 @@ public sealed class CanvasView : Control, ICustomHitTest
     /// <summary>Control-space point to document coordinates; null when outside the canvas.</summary>
     private (float X, float Y)? ToDocCoords(Point p) =>
         ViewModel?.ScreenToDoc(p.X, p.Y, Bounds.Width, Bounds.Height);
+
+    /// <summary>
+    /// The transform box and its eight handles, plus the rotation handle. Drawn outside the canvas clip: a
+    /// layer can hang over the edge and its handles still have to be grabbable.
+    /// </summary>
+    private void RenderTransformOverlay(DrawingContext context, Rect canvasRect)
+    {
+        if (ViewModel?.TransformOverlay(Bounds.Width, Bounds.Height) is not var (handles, rotation))
+        {
+            return;
+        }
+
+        Point Screen((double X, double Y) point) => new(
+            canvasRect.X + point.X / ViewModel.Doc.Width * canvasRect.Width,
+            canvasRect.Y + point.Y / ViewModel.Doc.Height * canvasRect.Height);
+
+        var corners = new[] { handles[0], handles[2], handles[4], handles[6] }.Select(Screen).ToArray();
+        for (var i = 0; i < corners.Length; i++)
+        {
+            context.DrawLine(TransformPen, corners[i], corners[(i + 1) % corners.Length]);
+        }
+
+        context.DrawLine(TransformPen, Screen(handles[1]), Screen(rotation));
+
+        foreach (var handle in handles)
+        {
+            var point = Screen(handle);
+            context.DrawRectangle(HandleFill, HandlePen, new Rect(point.X - 3.5, point.Y - 3.5, 7, 7));
+        }
+
+        var knob = Screen(rotation);
+        context.DrawEllipse(HandleFill, HandlePen, knob, 4, 4);
+    }
+
+    private static readonly IPen TransformPen = new Pen(Brushes.DodgerBlue, 1);
+    private static readonly IPen HandlePen = new Pen(Brushes.DodgerBlue, 1);
+    private static readonly IBrush HandleFill = Brushes.White;
 
     /// <summary>Layer pixel preview, rebuilt only when the surface Version moved.</summary>
     private WriteableBitmap? _previewBitmap;

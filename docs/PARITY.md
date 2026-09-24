@@ -32,7 +32,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | LayerMask.swift | 419 | missing | WS5 (layer mask system terpisah, bukan group) |
 | Selection.swift | 310 | partial | Rect/ellipse/lasso/mode+antialias coverage, invert, clip (WS3); feather/expand/contract missing |
 | Distort.swift | 291 | missing | WS8 |
-| LayerTransform.swift | 235 | partial | WS5: Scaled/Rounded/Mirrored/IsValid + typed scale/rotate UI. WS11: display transform dihormati layar + export (LayerPlacement/LayerGeometry), alat gambar DAN clip seleksi ikut di-mapping ke layer space (LayerPaintPoint + MapClipToLayer). Gap: magic wand + sheet adjustment masih baca koordinat kanvas, drag handles interaktif belum |
+| LayerTransform.swift | 235 | partial | WS5: Scaled/Rounded/Mirrored/IsValid + typed scale/rotate UI. WS11: display transform dihormati layar + export (LayerPlacement/LayerGeometry), alat gambar DAN clip seleksi ikut di-mapping ke layer space (LayerPaintPoint + MapClipToLayer). Drag handle interaktif ada (TransformHandles/TransformDrag, termasuk drag body buat move dan resolve kotak cover-canvas yang Width-nya 0). Gap: magic wand + sheet adjustment masih baca koordinat kanvas, distort mesh belum |
 | LiveLayerMask.swift | 230 | missing | WS5 |
 | Levels.swift | 228 | done | WS4: engine + histogram + auto + sampling; slider sheet |
 | ColorPalette.swift | 216 | missing | WS10 |
@@ -104,7 +104,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 |---|---|---|---|
 | EditorCanvas.swift | 1814 | partial | CanvasView: paint/zoom/pan; belum marquee/rulers/overlays |
 | TiledLayerRenderer.swift | 419 | partial | WS11 (perf): pemilihan tile diport ke Core (`TileGrid`: `Support(level)`, `Aligned`, `Interiors`, `PixelRect`) dengan 24 golden hitungan tangan, termasuk bukti bahwa dab 100 px di kanvas 4096 menyeleksi 4 dari 256 kotak. Gap: komposisi piece (region + margin, kompres ke level, clip hard-edge) belum disambung ke `CanvasView`, jadi render masih satu gambar penuh |
-| TransformOverlay.swift | 327 | missing | WS11 |
+| TransformOverlay.swift | 327 | partial | WS11: kotak transform + 8 handle + handle rotasi digambar di luar clip kanvas; hit-testing dan drag (move/resize/rotate) diport ke Core (`TransformHandles`, `TransformDrag`, `LayerTransform.Point/Contains`) dan disambung ke VM (`BeginTransformDrag`/`ContinueTransformDrag`/`EndTransformDrag`, satu undo step per drag, Shift = snap 15 derajat, Alt = anchor tengah). 42 golden hitungan tangan + 11 test end-to-end lewat VM termasuk bukti flatten ikut geser. Gap: marching-ants LOD buat seleksi kompleks, layout grid, user guides, overlay crop/gradient, dan pilihan lewat kotak grup/distort belum |
 | RasterSnapshot.swift | 176 | partial | Flatten kita |
 | LayerRenderer.swift | 173 | partial | |
 | MetalBrushCoverage.swift | 162 | partial | CPU coverage path kita |

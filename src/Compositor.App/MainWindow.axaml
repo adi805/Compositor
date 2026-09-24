@@ -83,6 +83,7 @@
         <ComboBoxItem>Blur</ComboBoxItem>
         <ComboBoxItem>Smudge</ComboBoxItem>
         <ComboBoxItem>Clone stamp</ComboBoxItem>
+        <ComboBoxItem>Move</ComboBoxItem>
       </ComboBox>
       <Separator Width="8" />
       <TextBlock Text="Brush" FontWeight="Bold" VerticalAlignment="Center" />
