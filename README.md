@@ -23,23 +23,27 @@ Pinned versions, why each one, and the verification commands: `docs/TECH-STACK.m
 
 Goal: same document model, same editing semantics, compatible file format. Not a UI clone.
 
-## Current status (v0.2)
+## Current status (v0.2 line + WS3-WS10)
 
 **Working today:**
 
-- **Document model**: layers (bottom-to-top), UUIDs, transform block, 9 upstream blend modes, opacity, visibility, lock.
+- **Document model**: layers (bottom-to-top), UUIDs, transform block, 13 blend modes (PDF-correct separable + non-separable), opacity, visibility, lock.
 - **Project files**: single-file zip `.comp` (`manifest.json` + `images/<uuid>.png`), atomic replace, full validation (30k px/side, 100 M px, 10k layers, 4 MiB manifest, unsafe-entry rejection). Byte-identical round-trip is test-enforced.
 - **Painting**: left-drag on canvas paints the active layer (soft round brush, spacing + stroke-opacity cap per upstream `brush-performance.md`). Click = dot. Undo/redo is per-stroke with exact pixel restoration.
-- **Files**: File menu with New (Ctrl+N), Open/Save `.comp` (Ctrl+O/S), Import PNG as layer (Ctrl+I), Export flattened PNG (Ctrl+E). Pickers collect paths only; all I/O is in the testable view-model.
+- **Editing**: rectangular/ellipse/lasso selection with add-subtract-intersect and feather-free coverage masks, invert, copy/cut/paste-as-floating, magic wand; levels, curves, hue/saturation, exposure, gradient map, invert and grain as live-preview sheets; Gaussian blur, motion blur, add noise and lens correction as filter sheets; gradient, shape, blur, clone stamp and smudge tools; canvas resize, crop, image resize.
+- **Layers panel**: add, delete, reorder, visibility, selection, groups, merge down, flip, typed scale/rotate, per-layer blend + opacity.
+- **Files**: File menu with New (Ctrl+N), Open/Save `.comp` (Ctrl+O/S). Import (Ctrl+I) reads PNG, JPEG, GIF, BMP, ICO and WebP by content, multi-select, centred on the canvas. Drag-drop onto the canvas imports what you drop, at the drop point, including image data with no file behind it. Export flattened PNG (Ctrl+E) or JPEG (Ctrl+Shift+E) with a quality slider, a matte for transparency, and the document resolution written into pHYs / JFIF. Last JPEG quality is remembered. Pickers collect paths only; all I/O is in the testable view-model.
 - **View**: wheel zoom anchored at the cursor (Ctrl-free), middle-drag pan, zoom % readout, Fit button (resets to fit).
-- **Layers panel**: add, delete, reorder, visibility, selection.
-- **CI**: GitHub Actions on every push; 86 tests (52 core + 34 app incl. headless UI).
+- **CI**: GitHub Actions on every push; 422 tests (300 core + 122 app incl. headless UI).
 
-**Known limits (v0.2):**
+**Known limits:**
 
-- Export composites Normal blend only (opacity + visibility respected); other blend modes await raster kernels.
-- Import is PNG-only, clipped top-left to the canvas.
-- Import of JPG/WEBP, selections, text, and brush size dynamics are next. See `docs/ROADMAP.md`.
+- Export and flatten ignore `Layer.Transform` (the canvas honours it), so a scaled or rotated layer exports differently from how it looks. Fixed with transform-aware compositing in WS11.
+- TIFF and HEIC import need a codec beyond the shipped Skia build; upstream reads both through ImageIO. Documented per row in `docs/PARITY.md`.
+- Import is not an undo step yet: layer add/remove has no command type (upstream wraps a batch in one edit).
+- Imported images are baked into a canvas-sized surface; upstream places them with a transform, so a partially-off-canvas drop clips instead of hanging off the edge.
+- Selected layer appears on top in the panel (inverted-order issue deferred); no stylus pressure; no zoom-preserving undo/redo.
+- Remaining upstream surfaces and tools are tracked item by item in `docs/PARITY.md`.
 
 ## Building and running
 

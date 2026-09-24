@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using Compositor.App.Imaging;
 using Compositor.Core;
 using Compositor.Core.Adjustments;
 using Compositor.Core.Filters;
@@ -1258,9 +1259,68 @@ public sealed class EditorViewModel : INotifyPropertyChanged
 
     public void ExportPng(string path)
     {
+        ImageBudget.ValidateExport(Doc.Width, Doc.Height);
         var (_, _, rgba) = Flatten.ToRgba(Doc);
         using var output = File.Create(path);
-        Png.Encode(output, Doc.Width, Doc.Height, rgba);
+        Png.Encode(output, Doc.Width, Doc.Height, rgba, dpi: Doc.Resolution);
+    }
+
+    /// <summary>
+    /// Encodes the flattened canvas as JPEG without touching disk. The export sheet previews
+    /// through this, which is how upstream's sheet shows an encoded size before you commit.
+    /// </summary>
+    public byte[] EncodeJpeg(JpegOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var (_, _, rgba) = Flatten.ToRgba(Doc);
+        return SkiaCodec.EncodeJpeg(rgba, Doc.Width, Doc.Height, options, dpi: Doc.Resolution);
+    }
+
+    /// <summary>Writes the matte-flattened JPEG to disk at the document's resolution.</summary>
+    public void ExportJpeg(string path, JpegOptions options)
+    {
+        ImageBudget.ValidateExport(Doc.Width, Doc.Height);
+        File.WriteAllBytes(path, EncodeJpeg(options));
+    }
+
+    /// <summary>
+    /// Canvas pixels already held by layers. Upstream spends the 100 MP document budget from
+    /// this number, recomputed per file so a batch cannot collectively overrun it.
+    /// </summary>
+    public long UsedPixels
+    {
+        get
+        {
+            long total = 0;
+            foreach (var layer in Doc.Layers)
+            {
+                if (layer.Pixels is { } surface)
+                {
+                    total += ImageBudget.PixelCount(surface.Width, surface.Height);
+                }
+            }
+
+            return total;
+        }
+    }
+
+    private string? _importError;
+
+    /// <summary>
+    /// What the last import batch could not read: one "file: reason" line per failure joined
+    /// by blank lines, the shape upstream's <c>session.importError</c> uses. Null when clean.
+    /// </summary>
+    public string? ImportError
+    {
+        get => _importError;
+        private set
+        {
+            if (_importError != value)
+            {
+                _importError = value;
+                OnPropertyChanged(nameof(ImportError));
+            }
+        }
     }
 
     public static EditorViewModel LoadProject(string path)
@@ -1269,16 +1329,93 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         return new EditorViewModel(doc) { _currentFilePath = path };
     }
 
-    /// <summary>Imports a PNG file as a new topmost layer, clipped top-left to the canvas.</summary>
-    public Layer ImportImagePng(string path, string? name = null)
+    /// <summary>
+    /// Imports one image file as a new topmost layer, named after the file. Returns null and
+    /// sets <see cref="ImportError"/> when the file cannot be read.
+    /// </summary>
+    public Layer? ImportImage(string path, (float X, float Y)? at = null)
     {
-        using var input = File.OpenRead(path);
-        var (w, h, rgba) = Png.Decode(input);
-        return ImportRgba(name ?? Path.GetFileNameWithoutExtension(path), w, h, rgba);
+        var added = ImportImages([path], at);
+        return added.Count > 0 ? added[0] : null;
     }
 
-    /// <summary>Imports raw straight-alpha RGBA pixels as a new topmost layer, clipped top-left.</summary>
-    public Layer ImportRgba(string name, int width, int height, byte[] rgba)
+    /// <summary>
+    /// Imports decoded image bytes as a new topmost layer. Used by a drop that carries image
+    /// data but no file (a screenshot, or a picture dragged out of a browser): upstream copies
+    /// those bytes to a temporary file first, we hand them straight to the same decoder.
+    /// </summary>
+    public Layer? ImportImageBytes(byte[] bytes, string name, (float X, float Y)? at = null)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        try
+        {
+            var decoded = SkiaCodec.Decode(bytes, UsedPixels);
+            var layer = ImportRgba(name, decoded.Width, decoded.Height, decoded.Rgba, at);
+            ImportError = null;
+            return layer;
+        }
+        catch (Exception ex) when (ex is ImageException or IOException or UnauthorizedAccessException)
+        {
+            ImportError = $"{name}: {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A drop that held neither a file nor image data. Same message shape upstream's
+    /// <c>ImageFileDrop</c> shows, with the format list read from the matrix so it cannot drift.
+    /// </summary>
+    public void ReportUnreadableDrop() =>
+        ImportError = "Some dropped items couldn't be read. " +
+                      ImageFormatPolicy.UnsupportedImportMessage.Replace("Choose a ", "Drag a ", StringComparison.Ordinal) +
+                      " from Explorer.";
+
+    /// <summary>
+    /// Imports files in pasteboard order. Upstream drains a batch collecting a per-file error
+    /// instead of aborting on the first unreadable drop; same here. Not an undo step yet:
+    /// layer add/remove has no command type, which is the DocumentHistory coalescing gap.
+    /// </summary>
+    public IReadOnlyList<Layer> ImportImages(IReadOnlyList<string> paths, (float X, float Y)? at = null)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        var added = new List<Layer>();
+        var failures = new List<string>();
+        foreach (var path in paths)
+        {
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                var decoded = SkiaCodec.Decode(bytes, UsedPixels);
+                added.Add(ImportRgba(
+                    Path.GetFileNameWithoutExtension(path),
+                    decoded.Width,
+                    decoded.Height,
+                    decoded.Rgba,
+                    at));
+            }
+            catch (Exception ex) when (ex is ImageException or IOException or UnauthorizedAccessException)
+            {
+                failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
+        ImportError = failures.Count > 0 ? string.Join("\n\n", failures) : null;
+        if (added.Count > 0)
+        {
+            RaiseDocumentChanged();
+        }
+
+        return added;
+    }
+
+    /// <summary>
+    /// Imports raw straight-alpha RGBA pixels as a new topmost layer. Placement follows
+    /// upstream: centered on <paramref name="at"/> when given, otherwise on the canvas centre,
+    /// then clipped to the canvas. Our layer surfaces are canvas-sized, so the placement is
+    /// baked into the pixels instead of a transform.
+    /// </summary>
+    public Layer ImportRgba(string name, int width, int height, byte[] rgba, (float X, float Y)? at = null)
     {
         ArgumentNullException.ThrowIfNull(rgba);
         if (width <= 0 || height <= 0 || rgba.Length != width * height * 4)
@@ -1287,11 +1424,25 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         }
 
         var surface = new RasterSurface(Doc.Width, Doc.Height);
-        var copyW = Math.Min(width, Doc.Width) * 4;
-        var copyH = Math.Min(height, Doc.Height);
-        for (var y = 0; y < copyH; y++)
+        var originX = (int)Math.Floor((at?.X ?? (Doc.Width / 2f)) - (width / 2f));
+        var originY = (int)Math.Floor((at?.Y ?? (Doc.Height / 2f)) - (height / 2f));
+        var srcX = Math.Max(0, -originX);
+        var srcY = Math.Max(0, -originY);
+        var cols = Math.Min(width - srcX, Doc.Width - (originX + srcX));
+        var rows = Math.Min(height - srcY, Doc.Height - (originY + srcY));
+        if (cols > 0 && rows > 0)
         {
-            Array.Copy(rgba, y * width * 4, surface.Pixels, y * Doc.Width * 4, copyW);
+            var dstX = originX + srcX;
+            var dstY = originY + srcY;
+            for (var y = 0; y < rows; y++)
+            {
+                Array.Copy(
+                    rgba,
+                    ((y + srcY) * width * 4) + (srcX * 4),
+                    surface.Pixels,
+                    (((y + dstY) * Doc.Width) + dstX) * 4,
+                    cols * 4);
+            }
         }
 
         surface.MarkDirty();

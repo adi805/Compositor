@@ -59,11 +59,11 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 |---|---|---|---|
 | ProjectController.swift | 299 | partial | ProjectStore kita (zip .comp, atomic, validasi) |
 | ProjectStore.swift | 225 | done | Round-trip teruji; format v1 kita sendiri, referensi skema upstream v6 |
-| ImageExporter.swift | 146 | partial | PNG flatten Normal-only; butuh per-layer blend (WS2), JPEG + cap 100MP + DPI (WS10) |
+| ImageExporter.swift | 146 | partial | WS10: PNG + JPEG export, cap 30k/side + 100MP, DPI (pHYs / JFIF), matte untuk transparency. Gap: composit masih ignore Layer.Transform (layar honor), jadi scale/rotate layer belum ikut ke-export - dibeton di WS11; adjustment/folder masks belum |
 | ImageResizer.swift | 117 | done | WS6: ImageSizeCommand (transform scale + bilinear resample + caps), resolution di manifest |
 | CanvasResizer.swift | 72 | done | WS6: CanvasResizeCommand (anchor offsets, fill extension layer, non-destructive) |
-| ImageImporter.swift | 63 | partial | PNG only |
-| ImageFileDrop.swift | 55 | missing | WS10 |
+| ImageImporter.swift | 63 | partial | WS10: budget 100MP/30k per file (dihitung ulang per file ala upstream), EXIF orientation, RGBA8 straight-alpha, gagal pakai taksonomi yang sama. Gap: HEIC + TIFF butuh codec yang gak ada di Skia build ini; thumbnail 96px asset belum dibuat |
+| ImageFileDrop.swift | 55 | partial | WS10: drop file ke canvas (pasteboard order, drop point jadi posisi), fallback ke image data in-memory buat screenshot/gambar dari browser (upstream salin ke file sementara), pesan gagal per-file. Gap: routing ke workspace/tab lain (ProjectWorkspace belum ada) |
 | CompositorApplicationDelegate.swift | 43 | n/a | Lifecycle Mac |
 
 ## Rendering (upstream 3.583 LOC)
@@ -102,7 +102,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | GradientControls (103) | missing | WS8 |
 | FloatingPanel (101) | n/a | Pola panel Mac (NSPanel floating); kita adaptif jadi Border in-window |
 | NewCanvasSheet (87) | partial | New document default saja |
-| JPEGExportSheet (87) | missing | WS10 |
+| JPEGExportSheet (87) | partial | WS10: slider quality 0-1 step 0.01 + readout %, matte picker (no alpha), ukuran hasil encode live, quality terakhir dipersist, dims + sRGB + dpi |
 | ColorPaletteControls (79) | missing | WS10 |
 | CanvasThumbnail (79) | missing | WS10 |
 | LayersPanel (76) | partial | Ter-cover NativeLayerList baris atas |
@@ -119,7 +119,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 
 ## Ringkasan
 
-- Setelah WS9: done 14 · partial 39 · missing 34 · n/a 3 = 90 baris matriks. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
+- Setelah WS10: done 14 · partial 41 · missing 32 · n/a 3 = 90 baris matriks. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
 - Urut dependensi (workstream plan): WS2 blend engine → WS3 selection → WS4 adjustments → WS5 layer power → WS6 geometry → WS7 brush v2 → WS8 tools → WS9 filters → WS10 IO/UX → WS11 rendering perf → WS12 ML decision → WS13 release.
 - Catatan jujur: SubjectRemoval/ContentFill/GuidedMatte di Mac pakai Apple Vision ML. Paritas di Windows berarti ONNX Runtime + model terbuka; keputusan arsitektur di WS12, hasilnya di-update di matriks ini.
 
@@ -185,3 +185,18 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - Tests: 41 Core (golden noise/lens dihitung ulang dengan implementasi Python independen dari C upstream; blur pakai properti kernel ternormalisasi + konservasi energi di seam 153+102=255) + 10 App (alur sheet, seed stability, eksklusivitas dua arah, locked layer, satu langkah undo, identity tanpa langkah)
 - Total: 242 Core + 93 App = 335 hijau; build bersih 0 warning
 - Belum: RemoveBackground/ContentAwareFill (WS12), preview low-res saat drag (upstream downscales preview surface; kita full-res), dial sudut drag ala upstream (pakai slider)
+
+
+## WS10 - IO parity - 2026-09-24
+- Export: PNG pakai encoder Core sendiri + chunk pHYs dari `Document.Resolution`; JPEG lewat Skia dengan alpha di-flatten ke matte, persis pola upstream (context tanpa alpha diisi warna matte, canvas digambar di atasnya). Cap dipake berdua: 1..30000 per sisi dan 100MP, pesan error disalin dari upstream biar diagnosanya sama.
+- JFIF density: encoder Skia nulis APP0 dengan unit aspect, jadi density di-patch setelah encode - ditambal kalau APP0 sudah ada, disisip tepat setelah SOI kalau belum. Bukan angka tempelan: 300 dpi ditulis, 300 dpi dibaca balik oleh test.
+- Import: satu jalur API (`ImportImage` / `ImportImages` / `ImportImageBytes`) yang ngenal kontainer dari magic bytes, bukan ekstensi - alasan yang sama yang ditulis upstream di `ImageFileDrop`. Matrix format jadi satu-satunya sumber buat filter dialog, pesan "unsupported", dan daftar gap.
+- Yang beneran bisa di-import: PNG, JPEG, GIF, BMP, ICO, WebP. Semuanya dibuktiin pake fixture nyata buatan tool lain (Pillow/ffmpeg), bukan hasil encoder yang lagi diuji. Yang gak bisa dan ditulis alasannya: TIFF + HEIC (upstream narik dua-duanya dari ImageIO).
+- Budget impor: sisa 100MP dihitung ulang per file dalam satu batch (kayak `drainImports` upstream), jadi layer yang udah ada ngurangin anggaran.
+- EXIF orientation: tag-nya gue parse sendiri (APP1/TIFF, little-endian dan big-endian), TAPI pixel-nya sengaja gak gue puter: terbukti jalur encoded-image Skia udah ngasih pixel tegak. Ekspektasi awal gue (puter sendiri) bikin rotasi ganda dan ditolak test yang pake JPEG EXIF buatan Pillow.
+- Placement: upstream naro gambar di tengah drop point (atau tengah kanvas kalau tanpa titik). Kita bake ke surface - surface selalu seukuran kanvas - dengan clip buat bagian yang keluar kanvas.
+- Drop-to-import: `AllowDrop` di canvas + `TryGetFiles()`. Kalau gak ada file (screenshot, gambar dari browser) kita ambil image data dan encode in-memory; upstream nyelipin ke file sementara, kita gak nyentuh disk sama sekali.
+- Sheet JPEG = `JPEGExportSheet` upstream: slider quality 0..1 step 0.01 + readout persen, matte picker tanpa alpha, ukuran hasil encode live, baris dims + sRGB + dpi, dan quality terakhir dipersist (padanan UserDefaults). Beda jujur: preview kita angka doang, gak ada thumbnail + spinner debounce.
+- DEFECT yang ketahuan dan sengaja belum dibenerin di sini: `Flatten.ToRgba` dan `SurfaceOps.CompositeStack` skip layer yang surface-nya bukan seukuran kanvas DAN ignore `Layer.Transform`, sementara `CanvasView` honor transform itu. Artinya export != layar begitu layer di-scale/rotate. Perbaikannya = composit transform-aware, masuk WS11.
+- Belum ada padanannya: thumbnail 96px per asset (`ImportedImage.thumbnail`), routing drop ke tab/workspace lain (`ProjectWorkspace`), dan impor sebagai undo step (add/remove layer belum punya command type).
+- Tests: 300 Core (+58) + 122 App (+29) = 422 hijau; build bersih 0 warning; `--smoke` exit 0.

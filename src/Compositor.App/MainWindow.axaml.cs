@@ -1,5 +1,6 @@
 using System.IO;
 using System.Globalization;
+using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -7,6 +8,7 @@ using Avalonia.Platform.Storage;
 using Compositor.Core;
 using Compositor.Core.Adjustments;
 using Compositor.Core.Filters;
+using Compositor.Core.Imaging;
 
 namespace Compositor.App;
 
@@ -32,6 +34,14 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = new EditorViewModel();
         BlendPicker.ItemsSource = Enum.GetValues<Core.BlendMode>();
+
+        // Drop-to-import target (upstream IO/ImageFileDrop.swift). The canvas is the drop
+        // surface so the drop point can be turned into a document position.
+        DragDrop.SetAllowDrop(EditorCanvas, true);
+        DragDrop.AddDragOverHandler(EditorCanvas, OnCanvasDragOver);
+        DragDrop.AddDropHandler(EditorCanvas, OnCanvasDrop);
+        DataContextChanged += (_, _) => ObserveImportError();
+        ObserveImportError();
     }
 
     public MainWindow(EditorViewModel viewModel) : this()
@@ -173,31 +183,48 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (Vm is null)
+            if (Vm is not { } vm)
             {
                 return;
             }
 
             var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Import PNG",
-                AllowMultiple = false,
-                FileTypeFilter =
-                [
-                    new FilePickerFileType("PNG image") { Patterns = ["*.png"] },
-                ],
+                Title = "Import image",
+                AllowMultiple = true,
+                FileTypeFilter = ImportFilters(),
             });
-            if (files.Count != 1)
+            if (files.Count == 0)
             {
                 return;
             }
 
-            Vm.ImportImagePng(files[0].Path.LocalPath);
+            vm.ImportImages(files.Select(f => f.Path.LocalPath).ToArray());
+            ShowImportNote(vm.ImportError);
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Import failed: {ex.Message}");
         }
+    }
+
+    /// Picker filters generated from the format matrix, so the dialog can never offer a
+    /// container the importer has not been shown to read.
+    private static FilePickerFileType[] ImportFilters()
+    {
+        var types = new List<FilePickerFileType>
+        {
+            new("All supported images") { Patterns = ImageFormatPolicy.ImportPatterns.ToArray() },
+        };
+        foreach (var row in ImageFormatPolicy.Importable)
+        {
+            types.Add(new FilePickerFileType(row.DisplayName)
+            {
+                Patterns = row.Extensions.Select(e => "*." + e).ToArray(),
+            });
+        }
+
+        return types.ToArray();
     }
 
     private async void OnExportPng(object? sender, RoutedEventArgs e)
@@ -231,6 +258,256 @@ public partial class MainWindow : Window
             Console.Error.WriteLine($"Export failed: {ex.Message}");
         }
     }
+
+    // ---------------------------------------------------------------------
+    // Drag and drop import. Upstream's ImageFileDrop resolves file promises first and
+    // falls back to raw image data; the drop point decides where the image lands.
+    // ---------------------------------------------------------------------
+
+    private void OnCanvasDragOver(object? sender, DragEventArgs e) =>
+        e.DragEffects = AcceptsDrop(e) ? DragDropEffects.Copy : DragDropEffects.None;
+
+    private static bool AcceptsDrop(DragEventArgs e) =>
+        e.DataTransfer.TryGetFiles() is { Length: > 0 } || e.DataTransfer.Contains(DataFormat.Bitmap);
+
+    private void OnCanvasDrop(object? sender, DragEventArgs e)
+    {
+        if (Vm is not { } vm)
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+
+        var at = DropPoint(e);
+        var files = e.DataTransfer.TryGetFiles();
+        if (files is { Length: > 0 })
+        {
+            var paths = files
+                .Where(item => item.Path is not null)
+                .Select(item => item.Path!.LocalPath)
+                .ToArray();
+            var added = vm.ImportImages(paths, at);
+            if (paths.Length == 0)
+            {
+                vm.ReportUnreadableDrop();
+            }
+
+            e.DragEffects = added.Count > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+            ShowImportNote(vm.ImportError);
+            return;
+        }
+
+        // No file behind it: a screenshot or a picture dragged out of a browser hands over
+        // image data instead. Upstream copies that to a temporary file; we keep it in memory
+        // and feed the same decoder, so nothing lands on disk.
+        var bitmap = e.DataTransfer.TryGetBitmap();
+        if (bitmap is not null)
+        {
+            using var encoded = new MemoryStream();
+            bitmap.Save(encoded);
+            var layer = vm.ImportImageBytes(encoded.ToArray(), "Dropped image", at);
+            e.DragEffects = layer is null ? DragDropEffects.None : DragDropEffects.Copy;
+            ShowImportNote(vm.ImportError);
+            return;
+        }
+
+        vm.ReportUnreadableDrop();
+        e.DragEffects = DragDropEffects.None;
+        ShowImportNote(vm.ImportError);
+    }
+
+    /// The document point under the cursor, so an image lands where it was dropped.
+    private (float X, float Y)? DropPoint(DragEventArgs e)
+    {
+        if (Vm is not { } vm)
+        {
+            return null;
+        }
+
+        var p = e.GetPosition(EditorCanvas);
+        return vm.ScreenToDoc(p.X, p.Y, EditorCanvas.Bounds.Width, EditorCanvas.Bounds.Height);
+    }
+
+    // ---------------------------------------------------------------------
+    // Import/export note. The VM owns the message so it stays testable; this only mirrors it.
+    // ---------------------------------------------------------------------
+
+    private EditorViewModel? _notedViewModel;
+
+    private void ObserveImportError()
+    {
+        if (ReferenceEquals(_notedViewModel, Vm))
+        {
+            return;
+        }
+
+        if (_notedViewModel is not null)
+        {
+            _notedViewModel.PropertyChanged -= OnVmPropertyChanged;
+        }
+
+        _notedViewModel = Vm;
+        if (_notedViewModel is not null)
+        {
+            _notedViewModel.PropertyChanged += OnVmPropertyChanged;
+        }
+
+        ShowImportNote(Vm?.ImportError);
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(EditorViewModel.ImportError))
+        {
+            ShowImportNote(Vm?.ImportError);
+        }
+    }
+
+    private void ShowImportNote(string? message)
+    {
+        StatusNote.IsVisible = !string.IsNullOrEmpty(message);
+        StatusNoteText.Text = message ?? string.Empty;
+    }
+
+    // ---------------------------------------------------------------------
+    // JPEG export sheet: upstream's JPEGExportSheet. Quality 0...1 with a percent readout,
+    // a matte for transparency, live encoded-size feedback, remembered quality.
+    // ---------------------------------------------------------------------
+
+    private JpegOptions _jpegOptions = new();
+    private bool _jpegReady;
+
+    private void OnExportJpeg(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+        {
+            return;
+        }
+
+        AdjustmentsPanel.IsVisible = false;
+        HideFilterPanel();
+        GeometryPanel.IsVisible = false;
+
+        _jpegOptions = JpegExportSettings.Load();
+        JpegPanel.IsVisible = true;
+
+        // Assigning a slider fires ValueChanged, which recomputes the options and the preview,
+        // so the matte has to be written before the quality or the colour would be dropped.
+        JpegMatte.Color = MatteColor(_jpegOptions);
+        JpegQuality.Value = _jpegOptions.Quality;
+        JpegInfo.Text = JpegLine(vm, bytes: null);
+    }
+
+    private static Avalonia.Media.Color MatteColor(JpegOptions options) =>
+        Avalonia.Media.Color.FromRgb(
+            (byte)Math.Clamp((int)Math.Round(options.Red * 255, MidpointRounding.AwayFromZero), 0, 255),
+            (byte)Math.Clamp((int)Math.Round(options.Green * 255, MidpointRounding.AwayFromZero), 0, 255),
+            (byte)Math.Clamp((int)Math.Round(options.Blue * 255, MidpointRounding.AwayFromZero), 0, 255));
+
+    private void OnJpegQuality(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (Vm is not { } vm || !JpegPanel.IsVisible)
+        {
+            return;
+        }
+
+        _jpegOptions = (_jpegOptions with { Quality = JpegQuality.Value }).Normalize();
+        JpegQualityReadout.Text = _jpegOptions.QualityReadout;
+        RefreshJpegPreview(vm);
+    }
+
+    private void OnJpegMatteChanged(object? sender, Avalonia.Controls.ColorChangedEventArgs e)
+    {
+        if (Vm is not { } vm || !JpegPanel.IsVisible)
+        {
+            return;
+        }
+
+        var color = JpegMatte.Color;
+        _jpegOptions = (_jpegOptions with
+        {
+            Red = color.R / 255d,
+            Green = color.G / 255d,
+            Blue = color.B / 255d,
+        }).Normalize();
+        RefreshJpegPreview(vm);
+    }
+
+    /// <summary>
+    /// Encodes the current canvas so the sheet can show a real byte count. Upstream debounces
+    /// this with a spinner because its preview decodes a thumbnail too; ours is synchronous and
+    /// only reports size, which is the part that changes with quality.
+    /// </summary>
+    private void RefreshJpegPreview(EditorViewModel vm)
+    {
+        try
+        {
+            var bytes = vm.EncodeJpeg(_jpegOptions);
+            _jpegReady = true;
+            JpegInfo.Text = JpegLine(vm, bytes.Length);
+        }
+        catch (ImageException ex)
+        {
+            _jpegReady = false;
+            JpegInfo.Text = ex.Message;
+        }
+
+        JpegExport.IsEnabled = _jpegReady;
+    }
+
+    private static string JpegLine(EditorViewModel vm, int? bytes)
+    {
+        var line = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{vm.Doc.Width} × {vm.Doc.Height} px · sRGB · {vm.Doc.Resolution:0.#} dpi");
+        return bytes is { } count ? line + " · " + FormatBytes(count) : line;
+    }
+
+    private static string FormatBytes(long count) => count switch
+    {
+        >= 1024 * 1024 => (count / (1024d * 1024d)).ToString("0.0", CultureInfo.InvariantCulture) + " MB",
+        >= 1024 => (count / 1024d).ToString("0.0", CultureInfo.InvariantCulture) + " KB",
+        _ => count + " bytes",
+    };
+
+    private async void OnJpegExport(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+        {
+            return;
+        }
+
+        try
+        {
+            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Export JPEG",
+                DefaultExtension = "jpg",
+                SuggestedFileName = $"{vm.Doc.Name}.jpg",
+                FileTypeChoices =
+                [
+                    new FilePickerFileType("JPEG image") { Patterns = ["*.jpg", "*.jpeg"] },
+                ],
+            });
+            if (file is null)
+            {
+                return;
+            }
+
+            vm.ExportJpeg(file.Path.LocalPath, _jpegOptions);
+            JpegExportSettings.Save(_jpegOptions);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Export failed: {ex.Message}");
+        }
+        finally
+        {
+            JpegPanel.IsVisible = false;
+        }
+    }
+
+    private void OnJpegCancel(object? sender, RoutedEventArgs e) => JpegPanel.IsVisible = false;
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -278,7 +555,15 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     return;
                 case Key.E:
-                    OnExportPng(this, e);
+                    if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                    {
+                        OnExportJpeg(this, e);
+                    }
+                    else
+                    {
+                        OnExportPng(this, e);
+                    }
+
                     e.Handled = true;
                     return;
                 case Key.A:

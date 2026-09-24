@@ -97,7 +97,7 @@ public sealed class EditorViewModelFileViewTests : IDisposable
     // ----- Import -----
 
     [Fact]
-    public void ImportImagePng_AddsTopmostSelectedLayerWithPixels()
+    public void ImportImage_AddsTopmostSelectedLayerCentredOnCanvas()
     {
         var vm = new EditorViewModel();
         var imgPath = Path.Combine(_dir, "img.png");
@@ -107,19 +107,79 @@ public sealed class EditorViewModelFileViewTests : IDisposable
         }
 
         var before = vm.Doc.Layers.Count;
-        var layer = vm.ImportImagePng(imgPath);
+        var layer = vm.ImportImage(imgPath);
 
+        Assert.NotNull(layer);
         Assert.Equal(before + 1, vm.Doc.Layers.Count);
-        Assert.Equal(vm.Doc.ActiveLayerId, layer.Id);
+        Assert.Equal(vm.Doc.ActiveLayerId, layer!.Id);
         Assert.NotNull(layer.Pixels);
         Assert.Equal(vm.Doc.Width, layer.Pixels!.Width); // surface sized to canvas
-        var (r, g, b, a) = layer.Pixels!.GetPixel(0, 0);
-        Assert.Equal((10, 20, 30, 255), (r, g, b, a));
+        Assert.Equal("img", layer.Name);
+
+        // Upstream placement with no drop point: centred on the canvas, so the corner is empty.
+        var originX = (int)Math.Floor((vm.Doc.Width / 2f) - (3 / 2f));
+        var originY = (int)Math.Floor((vm.Doc.Height / 2f) - (2 / 2f));
+        Assert.Equal((10, 20, 30, 255), layer.Pixels!.GetPixel(originX, originY));
+        Assert.Equal((0, 0, 0, 0), layer.Pixels.GetPixel(0, 0));
         Assert.Same(layer, vm.Selected?.Layer);
     }
 
     [Fact]
-    public void ImportImagePng_LargerThanCanvas_ClipsToCanvas()
+    public void ImportImage_AtDropPoint_LandsUnderTheCursor()
+    {
+        var vm = new EditorViewModel();
+        var imgPath = Path.Combine(_dir, "dot.png");
+        using (var fs = File.Create(imgPath))
+        {
+            Png.Encode(fs, 4, 4, SolidImage(4, 4, 200, 10, 10, 255));
+        }
+
+        var layer = vm.ImportImage(imgPath, at: (100, 80));
+
+        Assert.NotNull(layer);
+        // centre (100,80) minus half the 4x4 image = origin (98,78)
+        Assert.Equal((200, 10, 10, 255), layer!.Pixels!.GetPixel(98, 78));
+        Assert.Equal((0, 0, 0, 0), layer.Pixels.GetPixel(102, 82));
+    }
+
+    [Fact]
+    public void ImportImage_PartlyOffCanvas_CopiesOnlyTheVisiblePart()
+    {
+        var vm = new EditorViewModel();
+        var imgPath = Path.Combine(_dir, "edge.png");
+        using (var fs = File.Create(imgPath))
+        {
+            Png.Encode(fs, 4, 4, SolidImage(4, 4, 1, 2, 3, 255));
+        }
+
+        var layer = vm.ImportImage(imgPath, at: (1, 1));
+
+        Assert.NotNull(layer);
+        // Centre (1,1) puts the image origin at (-1,-1), so the bottom-right 3x3 of the image
+        // is what fits: it starts at the canvas corner and the pixel past it stays empty.
+        Assert.Equal((1, 2, 3, 255), layer!.Pixels!.GetPixel(0, 0));
+        Assert.Equal((1, 2, 3, 255), layer.Pixels.GetPixel(2, 2));
+        Assert.Equal((0, 0, 0, 0), layer.Pixels.GetPixel(3, 3));
+    }
+
+    [Fact]
+    public void ImportImage_UnreadableFile_SetsImportErrorAndAddsNothing()
+    {
+        var vm = new EditorViewModel();
+        var junkPath = Path.Combine(_dir, "junk.png");
+        File.WriteAllBytes(junkPath, new byte[48]);
+
+        var before = vm.Doc.Layers.Count;
+        var layer = vm.ImportImage(junkPath);
+
+        Assert.Null(layer);
+        Assert.Equal(before, vm.Doc.Layers.Count);
+        Assert.NotNull(vm.ImportError);
+        Assert.Contains("junk.png", vm.ImportError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImportImage_KeepsCanvasSizedSurface()
     {
         var vm = new EditorViewModel();
         var imgPath = Path.Combine(_dir, "big.png");
@@ -128,11 +188,11 @@ public sealed class EditorViewModelFileViewTests : IDisposable
             Png.Encode(fs, 99, 50, SolidImage(99, 50, 1, 2, 3, 255));
         }
 
-        var layer = vm.ImportImagePng(imgPath);
+        var layer = vm.ImportImage(imgPath);
 
-        Assert.NotNull(layer.Pixels);
-        Assert.Equal(vm.Doc.Width, layer.Pixels!.Width);
-        Assert.Equal(vm.Doc.Height, layer.Pixels!.Height);
+        Assert.NotNull(layer);
+        Assert.Equal(vm.Doc.Width, layer!.Pixels!.Width);
+        Assert.Equal(vm.Doc.Height, layer.Pixels.Height);
     }
 
     [Fact]

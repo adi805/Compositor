@@ -13,8 +13,16 @@ public static class Png
     private const int ColorTypeRgba8 = 6;
     private const int BitsPerChannel = 8;
     private static readonly byte[] Signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    private const double MillimetresPerMetreOverInch = 0.0254;
 
-    public static void Encode(Stream output, int width, int height, ReadOnlySpan<byte> rgba)
+    /// <summary>DPI to the pHYs unit PNG stores (pixels per metre, per ISO/IEC 10918 companion spec).</summary>
+    public static uint PixelsPerMeter(double dpi) =>
+        (uint)Math.Round(dpi / MillimetresPerMetreOverInch, MidpointRounding.AwayFromZero);
+
+    /// <summary>Inverse of <see cref="PixelsPerMeter"/>; 72 dpi round-trips to 72.</summary>
+    public static double DpiFromPixelsPerMeter(uint pixelsPerMetre) => pixelsPerMetre * MillimetresPerMetreOverInch;
+
+    public static void Encode(Stream output, int width, int height, ReadOnlySpan<byte> rgba, double? dpi = null)
     {
         ArgumentNullException.ThrowIfNull(output);
         if (width <= 0 || height <= 0)
@@ -28,8 +36,6 @@ public static class Png
             throw new ArgumentException($"Pixel buffer is {rgba.Length} bytes; expected {expected}.");
         }
 
-        Span<byte> chunkType = stackalloc byte[4];
-
         output.Write(Signature);
 
         // IHDR: width, height, depth, color type, compression 0, filter 0, interlace 0.
@@ -39,6 +45,17 @@ public static class Png
         ihdr[8] = BitsPerChannel;
         ihdr[9] = ColorTypeRgba8;
         WriteChunk(output, "IHDR"u8, ihdr);
+
+        // pHYs: upstream stamps manifest.resolution into exported PNGs, so print size survives.
+        if (dpi is { } value && double.IsFinite(value) && value > 0)
+        {
+            var phys = new byte[9];
+            var perMeter = PixelsPerMeter(value);
+            BinaryPrimitives.WriteUInt32BigEndian(phys, perMeter);
+            BinaryPrimitives.WriteUInt32BigEndian(phys.AsSpan(4), perMeter);
+            phys[8] = 1; // unit specifier: metre
+            WriteChunk(output, "pHYs"u8, phys);
+        }
 
         // Raw scanlines with filter byte 0 (None) per row, then deflate.
         var stride = (width * 4) + 1;
@@ -60,9 +77,16 @@ public static class Png
         WriteChunk(output, "IEND"u8, ReadOnlySpan<byte>.Empty);
     }
 
-    public static (int Width, int Height, byte[] Rgba) Decode(Stream input)
+    public static (int Width, int Height, byte[] Rgba) Decode(Stream input) => Decode(input, out _);
+
+    /// <summary>
+    /// Decodes an 8-bit RGBA PNG, reporting the pHYs density as DPI when the chunk is
+    /// present and metric. Everything else about pHYs is ignored, as upstream ignores it.
+    /// </summary>
+    public static (int Width, int Height, byte[] Rgba) Decode(Stream input, out double? dpi)
     {
         ArgumentNullException.ThrowIfNull(input);
+        dpi = null;
 
         var signature = new byte[8];
         ReadExactly(input, signature);
@@ -102,6 +126,13 @@ public static class Png
                 if (width <= 0 || height <= 0 || data[8] != BitsPerChannel || data[9] != ColorTypeRgba8 || data[12] != 0)
                 {
                     throw new InvalidDataException("Unsupported PNG: only 8-bit RGBA non-interlaced.");
+                }
+            }
+            else if (type.SequenceEqual("pHYs"u8))
+            {
+                if (data.Length == 9 && data[8] == 1)
+                {
+                    dpi = DpiFromPixelsPerMeter(BinaryPrimitives.ReadUInt32BigEndian(data));
                 }
             }
             else if (type.SequenceEqual("IDAT"u8))

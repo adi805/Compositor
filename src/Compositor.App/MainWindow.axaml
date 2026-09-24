@@ -11,8 +11,9 @@
         <MenuItem Header="_Open project..." Click="OnOpen" InputGesture="Ctrl+O" />
         <MenuItem Header="_Save project" Click="OnSave" InputGesture="Ctrl+S" />
         <Separator />
-        <MenuItem Header="_Import PNG..." Click="OnImportImage" InputGesture="Ctrl+I" />
+        <MenuItem Header="_Import image..." Click="OnImportImage" InputGesture="Ctrl+I" />
         <MenuItem Header="_Export PNG..." Click="OnExportPng" InputGesture="Ctrl+E" />
+        <MenuItem Header="E_xport JPEG..." Click="OnExportJpeg" InputGesture="Ctrl+Shift+E" />
       </MenuItem>
       <MenuItem Header="_View">
         <MenuItem Header="Zoom _In" Click="OnZoomIn" />
@@ -241,6 +242,36 @@
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
               <Button x:Name="FilterOk" Content="OK" Click="OnFilterOk" />
               <Button x:Name="FilterCancel" Content="Cancel" Click="OnFilterCancel" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <!-- Import/export note: what a batch could not read. Bound in code so the VM stays UI-free. -->
+        <Border x:Name="StatusNote" Background="#E6B3261F" CornerRadius="6" Padding="10,6" MaxWidth="520"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Margin="12" IsVisible="False">
+          <TextBlock x:Name="StatusNoteText" Foreground="#FAFAFA" TextWrapping="Wrap" />
+        </Border>
+        <Border x:Name="JpegPanel" Background="#E6202020" CornerRadius="8"
+                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="12" Padding="14" Width="340" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Export JPEG" FontWeight="Bold" />
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Text="Quality" VerticalAlignment="Center" />
+              <Slider x:Name="JpegQuality" Grid.Column="1" Minimum="0" Maximum="1" Value="0.85"
+                      TickFrequency="0.01" IsSnapToTickEnabled="True" Margin="8,0"
+                      ValueChanged="OnJpegQuality" />
+              <TextBlock x:Name="JpegQualityReadout" Grid.Column="2" Text="85%" MinWidth="40"
+                         TextAlignment="Right" VerticalAlignment="Center" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="Background for transparency" VerticalAlignment="Center" />
+              <ColorPicker x:Name="JpegMatte" Grid.Column="1" Height="44" Color="White"
+                           IsAlphaVisible="False" ColorChanged="OnJpegMatteChanged" />
+            </Grid>
+            <TextBlock x:Name="JpegInfo" Foreground="#B9B9B9" Text="0 × 0 px" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button x:Name="JpegCancel" Content="Cancel" Click="OnJpegCancel" />
+              <Button x:Name="JpegExport" Content="Export..." Click="OnJpegExport" />
             </StackPanel>
           </StackPanel>
         </Border>
