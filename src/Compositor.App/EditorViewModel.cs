@@ -1375,7 +1375,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// instead of aborting on the first unreadable drop; same here. Not an undo step yet:
     /// layer add/remove has no command type, which is the DocumentHistory coalescing gap.
     /// </summary>
-    public IReadOnlyList<Layer> ImportImages(IReadOnlyList<string> paths, (float X, float Y)? at = null)
+    public IReadOnlyList<Layer> ImportImages(string[] paths, (float X, float Y)? at = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
 

@@ -146,10 +146,10 @@ public static class ImageFormatPolicy
     public static IReadOnlyList<string> ImportGaps { get; } =
         Matrix.Where(row => !row.CanImport).Select(row => row.DisplayName + ": " + row.Note).ToArray();
 
-    private static string JoinAnd(IReadOnlyList<string> items) => items.Count switch
+    private static string JoinAnd(string[] items) => items.Length switch
     {
         0 => "supported",
         1 => items[0],
-        _ => string.Join(", ", items.Take(items.Count - 1)) + ", or " + items[^1],
+        _ => string.Join(", ", items.Take(items.Length - 1)) + ", or " + items[^1],
     };
 }
