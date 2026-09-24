@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Compositor.Core;
 using Compositor.Core.Adjustments;
+using Compositor.Core.Filters;
 using Compositor.Core.Commands;
 using Compositor.Core.Imaging;
 using Compositor.Core.Project;
@@ -54,6 +55,9 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     public UndoHistory History { get; } = new();
 
     public bool CanUndo => History.CanUndo;
+
+    /// <summary>Undoable steps on the shared history (see <see cref="UndoHistory.Depth"/>).</summary>
+    public int HistoryDepth => History.Depth;
     public bool CanRedo => History.CanRedo;
 
     /// <summary>
@@ -1305,8 +1309,13 @@ public sealed class EditorViewModel : INotifyPropertyChanged
 
     // ------------------------------------------------------------- adjustments
 
-    /// <summary>Destructive per-layer adjustments, mirroring the upstream sheets.</summary>
-    public enum AdjustmentKind { Levels, Curves, HueSaturation, Exposure, GradientMap }
+    /// <summary>Destructive per-layer adjustments, mirroring the upstream sheets. Grain sits here
+    /// too because Filters.swift marks it an image adjustment, not a Filter-menu entry.</summary>
+    public enum AdjustmentKind { Levels, Curves, HueSaturation, Exposure, GradientMap, Grain }
+
+    /// <summary>The Filter menu: the Filters.swift entries that are not image adjustments.
+    /// Remove Background and Content-Aware Fill stay out until the ML workstream.</summary>
+    public enum FilterMenuKind { GaussianBlur, MotionBlur, AddNoise, LensCorrection }
 
     private AdjustmentKind? _openAdjustment;
     /// <summary>The sheet currently open, or null.</summary>
@@ -1331,6 +1340,29 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     public HueSaturationSettings HueSatState { get; private set; } = new();
     public ExposureSettings ExposureState { get; private set; } = new();
     public GradientMapSettings GradientMapState { get; private set; } = new();
+    public GrainSettings GrainState { get; private set; } = new();
+
+    /// <summary>Live settings for the open filter sheet (reset on every open).</summary>
+    public FilterSettings FilterState { get; private set; } = new();
+
+    /// <summary>
+    /// Seed for the open sheet's noise or grain. One seed per sheet keeps a live preview from
+    /// swimming while a slider moves; upstream gives each application its own seed, so a fresh
+    /// number is drawn on open and reused for the whole preview/commit pair.
+    /// </summary>
+    public uint FilterSeed { get; private set; } = FilterRunner.DefaultSeed;
+
+    private uint _nextFilterSeed = FilterRunner.DefaultSeed;
+
+    /// <summary>Deterministic per application: tests need reproducible noise, so no RNG.</summary>
+    private uint DrawFilterSeed()
+    {
+        unchecked
+        {
+            _nextFilterSeed = (_nextFilterSeed * 1664525u) + 1013904223u;
+            return _nextFilterSeed;
+        }
+    }
 
     private RasterSurface? _adjustmentPreview;
 
@@ -1392,6 +1424,9 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         AdjustmentKind.GradientMap => GradientMapState.IsValid
             ? AdjustmentRunner.ApplyGradientMap(surface, GradientMapState, clip)
             : null,
+        AdjustmentKind.Grain => GrainState.Amount <= 0
+            ? null
+            : FilterRunner.ApplyGrain(surface, GrainState, clip, seed: FilterSeed),
         _ => null,
     };
 
@@ -1401,7 +1436,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// </summary>
     public bool OpenAdjustmentSheet(AdjustmentKind kind)
     {
-        if (OpenAdjustment is not null || Floating is not null)
+        if (OpenAdjustment is not null || OpenFilter is not null || Floating is not null)
         {
             return false;
         }
@@ -1418,11 +1453,14 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         HueSatState = new HueSaturationSettings();
         ExposureState = new ExposureSettings();
         GradientMapState = new GradientMapSettings();
+        GrainState = new GrainSettings();
         OnPropertyChanged(nameof(LevelsState));
         OnPropertyChanged(nameof(CurvesState));
         OnPropertyChanged(nameof(HueSatState));
         OnPropertyChanged(nameof(ExposureState));
         OnPropertyChanged(nameof(GradientMapState));
+        OnPropertyChanged(nameof(GrainState));
+        FilterSeed = DrawFilterSeed();
         OpenAdjustment = kind;
         UpdateAdjustmentPreview();
         return true;
@@ -1479,10 +1517,147 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         return true;
     }
 
+    // ------------------------------------------------------------------ filters
+
+    private FilterMenuKind? _openFilter;
+
+    /// <summary>The Filter-menu sheet currently open, or null.</summary>
+    public FilterMenuKind? OpenFilter
+    {
+        get => _openFilter;
+        private set
+        {
+            if (_openFilter == value)
+            {
+                return;
+            }
+
+            _openFilter = value;
+            OnPropertyChanged(nameof(OpenFilter));
+        }
+    }
+
+    /// <summary>Opens a filter sheet on the active layer; false when another sheet is open.</summary>
+    public bool OpenFilterSheet(FilterMenuKind kind)
+    {
+        if (OpenAdjustment is not null || OpenFilter is not null || Floating is not null)
+        {
+            return false;
+        }
+
+        var layer = ActiveLayer;
+        if (layer is null || layer.IsLocked)
+        {
+            return false;
+        }
+
+        layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
+        FilterState = new FilterSettings();
+        FilterSeed = DrawFilterSeed();
+        OnPropertyChanged(nameof(FilterState));
+        OpenFilter = kind;
+        UpdateFilterPreview();
+        return true;
+    }
+
+    /// <summary>Replaces the filter settings and refreshes the preview. The records are immutable,
+    /// so the sheet writes through here instead of holding a mutable settings object.</summary>
+    public void SetFilterState(FilterSettings settings)
+    {
+        FilterState = settings;
+        OnPropertyChanged(nameof(FilterState));
+        UpdateFilterPreview();
+    }
+
+    /// <summary>Replaces the grain settings and refreshes the adjustment preview.</summary>
+    public void SetGrainState(GrainSettings settings)
+    {
+        GrainState = settings;
+        OnPropertyChanged(nameof(GrainState));
+        UpdateAdjustmentPreview();
+    }
+
+    /// <summary>Recomputes the filter preview from the current sheet settings. Shares the preview
+    /// slot and generation counter with the adjustment sheets, so the canvas needs no new wiring.</summary>
+    public void UpdateFilterPreview()
+    {
+        if (OpenFilter is not { } kind || ActiveLayer?.Pixels is not { } surface)
+        {
+            _adjustmentPreview = null;
+            return;
+        }
+
+        _adjustmentPreview = RunFilter(kind, surface, CurrentAdjustmentClip);
+        AdjustmentPreviewGeneration++;
+        DocumentChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Runs the open filter, or returns null when its settings are an identity. Straightening by
+    /// zero is the one identity case: the other filters are clamped away from doing nothing. The
+    /// null lets commit behave like the adjustment sheets do, closing instead of writing a blank
+    /// undo step the user would have to walk back through.
+    /// </summary>
+    private RasterSurface? RunFilter(FilterMenuKind kind, RasterSurface surface, SelectionClip? clip)
+    {
+        if (kind == FilterMenuKind.LensCorrection && FilterState.Normalize().Distortion == 0)
+        {
+            return null;
+        }
+
+        return FilterRunner.Apply(ToCoreKind(kind), surface, FilterState, clip, FilterSeed);
+    }
+
+    private static FilterKind ToCoreKind(FilterMenuKind kind) => kind switch
+    {
+        FilterMenuKind.GaussianBlur => FilterKind.GaussianBlur,
+        FilterMenuKind.MotionBlur => FilterKind.MotionBlur,
+        FilterMenuKind.AddNoise => FilterKind.AddNoise,
+        FilterMenuKind.LensCorrection => FilterKind.LensCorrection,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    /// <summary>Applies the open filter to the layer as one undoable command.</summary>
+    public bool CommitFilter()
+    {
+        if (OpenFilter is not { } kind || ActiveLayer?.Pixels is not { } surface)
+        {
+            return false;
+        }
+
+        var filtered = _adjustmentPreview ?? RunFilter(kind, surface, CurrentAdjustmentClip);
+        if (filtered is null)
+        {
+            return CancelFilter(); // identity: nothing to commit
+        }
+
+        var before = (byte[])surface.Pixels.Clone();
+        var after = (byte[])filtered.Pixels.Clone();
+        History.Push(new AdjustmentCommand(surface, before, after, kind.ToString()));
+        _adjustmentPreview = null;
+        OpenFilter = null;
+        RaiseDocumentChanged();
+        return true;
+    }
+
+    /// <summary>Closes the filter sheet and drops the preview without touching pixels.</summary>
+    public bool CancelFilter()
+    {
+        if (OpenFilter is null)
+        {
+            return false;
+        }
+
+        _adjustmentPreview = null;
+        OpenFilter = null;
+        RaiseDocumentChanged();
+        return true;
+    }
+
     /// <summary>Inverts the active layer's colors (Cmd+I upstream), one undoable command.</summary>
     public bool ApplyInvert()
     {
-        if (OpenAdjustment is not null || Floating is not null)
+        if (OpenAdjustment is not null || OpenFilter is not null || Floating is not null)
         {
             return false;
         }

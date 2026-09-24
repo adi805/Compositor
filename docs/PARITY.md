@@ -14,7 +14,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | BrushStroke.swift | 899 | done | WS7: stamping/spacing/hardness/opacity-cap/eraser port penuh (coverage mask screen/max); flow + pressure = n/a upstream (gak ada di Mac) |
 | EditorSession.swift | 689 | partial | Peran session dipecah ke EditorViewModel; belum tool-state lengkap |
 | HueSaturation.swift | 574 | partial | WS4: band math + master/colorize + sheet; per-band spectrum UI & eyedroppers missing |
-| Filters.swift | 473 | missing | WS9 |
+| Filters.swift | 473 | partial | WS9: Gaussian/Motion blur, Add Noise, Lens Correction + Grain ported (noise/lens/grain bit-exact from NoisePixels.c, LensPixels.c, adjust_grain). RemoveBackground + ContentAwareFill = Apple Vision, masuk WS12 |
 | LayerMask.swift | 419 | missing | WS5 (layer mask system terpisah, bukan group) |
 | Selection.swift | 310 | partial | Rect/ellipse/lasso/mode+antialias coverage, invert, clip (WS3); feather/expand/contract missing |
 | Distort.swift | 291 | missing | WS8 |
@@ -32,7 +32,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | FloatingSelection.swift | 159 | partial | Floating overlay + nudge/commit/cancel; no drag-move yet |
 | ShapeTool.swift | 157 | missing | WS8 |
 | MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
-| ImageAdjustments.swift | 134 | partial | WS4: Exposure + GradientMap done; Grain → WS9 |
+| ImageAdjustments.swift | 134 | done | WS4+WS9: AdjustmentColor, Exposure, GradientMap, Grain (value-noise lattice + midtone weighting + origin/unitsPerPixel document-space pinning) semua port |
 | DocumentHistory.swift | 119 | partial | UndoHistory ada (per-command); belum edit-group coalescing |
 | GuidedMatte.swift | 118 | missing | WS12 (ML) |
 | LayerAdjustment.swift | 112 | partial | WS4: AdjustmentKind + settings ported; non-destructive adjustment LAYERS not yet |
@@ -89,18 +89,18 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | Upstream | Status | Catatan |
 |---|---|---|
 | NativeLayerList (896) | partial | Layer list add/del/reorder/visibility; belum drag-reorder/grup/thumbnail |
-| HueSaturationSheet (193) | missing | WS4 |
+| HueSaturationSheet (193) | partial | WS4: 7 band + hue/sat/lightness + colorize; spectrum per-band + eyedropper belum |
 | ColorPickerSheet (185) | partial | Swatch sederhana; belum picker penuh |
 | ProjectTabs (178) | missing | WS10 |
-| FilterSheet (163) | missing | WS9 |
-| LevelsSheet (144) | missing | WS4 |
+| FilterSheet (163) | partial | WS9: Filter menu + sheet, live preview, readout per parameter; dial sudut drag & preview low-res upstream belum |
+| LevelsSheet (144) | partial | WS4: slider 5 kanal + 3 Auto + histogram live + channel picker |
 | LassoControls (128) | missing | WS3 |
 | ImageSizeSheet (120) | partial | WS6: sheet pixels-mode + DPI (anchor picker 9 opsi); units inches/cm/percent + relative/locked belum di UI |
 | BrushControls (120) | partial | Size + 5 warna; belum hardness/flow/opacity kuas |
 | CanvasSizeSheet (113) | partial | WS6: sama seperti ImageSizeSheet |
 | TransformInspector (112) | missing | WS5 |
 | GradientControls (103) | missing | WS8 |
-| FloatingPanel (101) | n/a-ish | Pola UI; adaptif per platform |
+| FloatingPanel (101) | n/a | Pola panel Mac (NSPanel floating); kita adaptif jadi Border in-window |
 | NewCanvasSheet (87) | partial | New document default saja |
 | JPEGExportSheet (87) | missing | WS10 |
 | ColorPaletteControls (79) | missing | WS10 |
@@ -119,7 +119,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 
 ## Ringkasan
 
-- Done: 6. Partial: 29. Missing: 33. n/a: 3. (setelah WS5)
+- Setelah WS9: done 14 · partial 39 · missing 34 · n/a 3 = 90 baris matriks. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
 - Urut dependensi (workstream plan): WS2 blend engine → WS3 selection → WS4 adjustments → WS5 layer power → WS6 geometry → WS7 brush v2 → WS8 tools → WS9 filters → WS10 IO/UX → WS11 rendering perf → WS12 ML decision → WS13 release.
 - Catatan jujur: SubjectRemoval/ContentFill/GuidedMatte di Mac pakai Apple Vision ML. Paritas di Windows berarti ONNX Runtime + model terbuka; keputusan arsitektur di WS12, hasilnya di-update di matriks ini.
 
@@ -171,3 +171,17 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 - VM: BeginTool/ContinueTool/EndTool dispatch per tool; RegionCommand undo (before/after region); clone source via SetCloneSource; toolbar 10 tool
 - Tests: 14 Core + 6 App; total 284 (201 Core + 83 App)
 - JUJUR partial: gradient/shape belum live preview saat drag (commit saat release, upstream live pending-edit); liquify warp belum; clone "sample all layers" belum
+
+
+## WS9 - Filters - 2026-09-24
+- Set = Filters.swift: Gaussian Blur, Motion Blur, Add Noise, Lens Correction di menu Filter; Grain ikut menu Adjust karena upstream menandai curves/exposure/gradientMap/grain sebagai `isImageAdjustment`, bukan entri Filter
+- Kernel: `noise_add`, `lens_distort`, `adjust_grain` diport bit-eksak dari C upstream (hash + box-Muller + lattice value-noise + pembobotan midtone `0.4 + 2.4*L*(1-L)`); rounding dijaga AwayFromZero supaya sama dengan `lroundf`/`+0.5f` upstream
+- Blur: dua buffer premultiplied, margin `radius*3+2` (Gaussian) / `distance/2+2` (Motion), edge unclamped supaya "melunakkan tepi layer dan menyebar ke ruang yang disediakan" seperti upstream, lalu crop balik ke ukuran layer
+- Motion radius = `distance/sqrt(12)`: konversi panjang garis ke sebaran Gaussian persis komentar upstream, diverifikasi test
+- Seed per-aplikasi (bukan state global): `FilterRunner.Apply(..., seed)` mengikuti `FilterJob.seed`; VM menggambar seed baru tiap sheet dibuka dan menahannya selama preview supaya pola tidak "berenang" saat slider digerakkan
+- Menu Filter menampilkan Remove Background + Content-Aware Fill dalam keadaan disabled dengan tooltip, supaya gap ML terlihat dan bukan hilang diam-diam (WS12)
+- Undo: reuse `AdjustmentCommand`; lens distortion 0 diperlakukan identity sehingga commit-nya menutup sheet tanpa menambah langkah undo kosong
+- Bug ketangkep test: guard `OpenAdjustmentSheet`/`ApplyInvert` cuma ngecek `OpenAdjustment` + `Floating`, jadi sheet Adjust bisa dibuka di atas sheet Filter yang masih hidup dan dua preview rebutan satu slot. Sekarang kedua arah ditutup.
+- Tests: 41 Core (golden noise/lens dihitung ulang dengan implementasi Python independen dari C upstream; blur pakai properti kernel ternormalisasi + konservasi energi di seam 153+102=255) + 10 App (alur sheet, seed stability, eksklusivitas dua arah, locked layer, satu langkah undo, identity tanpa langkah)
+- Total: 242 Core + 93 App = 335 hijau; build bersih 0 warning
+- Belum: RemoveBackground/ContentAwareFill (WS12), preview low-res saat drag (upstream downscales preview surface; kita full-res), dial sudut drag ala upstream (pakai slider)

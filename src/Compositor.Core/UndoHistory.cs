@@ -10,6 +10,9 @@ public sealed class UndoHistory
     private readonly Stack<IUndoCommand> _undo = new();
     private readonly Stack<IUndoCommand> _redo = new();
 
+    /// <summary>Steps currently undoable. Exposed so a caller can assert an action cost exactly one.</summary>
+    public int Depth => _undo.Count;
+
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
 

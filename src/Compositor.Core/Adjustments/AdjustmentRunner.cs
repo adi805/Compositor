@@ -160,8 +160,8 @@ public static class AdjustmentRunner
         return result;
     }
 
-    /// <summary>coverage × adjusted + (1 − coverage) × original, with rounding.</summary>
-    private static void BlendThroughSelection(
+    /// <summary>coverage × adjusted + (1 − coverage) × original, with rounding. Shared with the filter runner.</summary>
+    internal static void BlendThroughSelection(
         RasterSurface adjusted, RasterSurface original, SelectionClip? selection)
     {
         if (selection is null)

@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Compositor.Core;
 using Compositor.Core.Adjustments;
+using Compositor.Core.Filters;
 
 namespace Compositor.App;
 
@@ -368,6 +369,7 @@ public partial class MainWindow : Window
         HueSatControls.IsVisible = false;
         ExposureControls.IsVisible = false;
         GradientMapControls.IsVisible = false;
+        GrainControls.IsVisible = false;
         foreach (var control in toShow)
         {
             control.IsVisible = true;
@@ -440,6 +442,150 @@ public partial class MainWindow : Window
 
     private static AdjustmentColor ToAdjustmentColor(Avalonia.Media.Color c) =>
         new(c.R / 255d, c.G / 255d, c.B / 255d);
+
+    private void OnAdjustGrain(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenAdjustmentSheet(EditorViewModel.AdjustmentKind.Grain) == true)
+        {
+            ShowAdjustmentSheet("Grain", GrainControls);
+            GrainSliderSet(Vm.GrainState);
+        }
+    }
+
+    private void GrainSliderSet(GrainSettings g)
+    {
+        GrainAmount.Value = g.Amount;
+        GrainSize.Value = g.Size;
+        GrainRoughness.Value = g.Roughness;
+    }
+
+    private void OnGrainSlider(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (Vm is null || Vm.OpenAdjustment != EditorViewModel.AdjustmentKind.Grain)
+        {
+            return;
+        }
+
+        Vm.SetGrainState(Vm.GrainState with
+        {
+            Amount = GrainAmount.Value,
+            Size = GrainSize.Value,
+            Roughness = GrainRoughness.Value,
+        });
+    }
+
+    // ------------------------------------------------------------------ filters
+
+    private void ShowFilterSheet(string title, params Avalonia.Controls.Control[] toShow)
+    {
+        FilterTitle.Text = title;
+        FilterPanel.IsVisible = true;
+        GaussianBlurControls.IsVisible = false;
+        MotionBlurControls.IsVisible = false;
+        AddNoiseControls.IsVisible = false;
+        LensCorrectionControls.IsVisible = false;
+        foreach (var control in toShow)
+        {
+            control.IsVisible = true;
+        }
+    }
+
+    private void HideFilterPanel() => FilterPanel.IsVisible = false;
+
+    private void FilterSliderSet(FilterSettings f)
+    {
+        RadiusSlider.Value = f.Radius;
+        AngleSlider.Value = f.Angle;
+        DistanceSlider.Value = f.Distance;
+        NoiseAmountSlider.Value = f.Amount;
+        DistortionSlider.Value = f.Distortion;
+        GaussianNoiseCheck.IsChecked = f.Gaussian;
+        MonochromeNoiseCheck.IsChecked = f.Monochromatic;
+        WriteFilterReadouts(f);
+    }
+
+    private void WriteFilterReadouts(FilterSettings f)
+    {
+        RadiusReadout.Text = " " + f.Radius.ToString("0.0", CultureInfo.InvariantCulture);
+        AngleReadout.Text = " " + f.Angle.ToString("0", CultureInfo.InvariantCulture);
+        DistanceReadout.Text = " " + f.Distance.ToString("0", CultureInfo.InvariantCulture);
+        NoiseAmountReadout.Text = " " + f.Amount.ToString("0.0", CultureInfo.InvariantCulture);
+        DistortionReadout.Text = " " + f.Distortion.ToString("0", CultureInfo.InvariantCulture);
+    }
+
+    private void OnFilterGaussianBlur(object? sender, RoutedEventArgs e)
+        => OpenFilterSheet(EditorViewModel.FilterMenuKind.GaussianBlur, "Gaussian Blur", GaussianBlurControls);
+
+    private void OnFilterMotionBlur(object? sender, RoutedEventArgs e)
+        => OpenFilterSheet(EditorViewModel.FilterMenuKind.MotionBlur, "Motion Blur", MotionBlurControls);
+
+    private void OnFilterAddNoise(object? sender, RoutedEventArgs e)
+        => OpenFilterSheet(EditorViewModel.FilterMenuKind.AddNoise, "Add Noise", AddNoiseControls);
+
+    private void OnFilterLensCorrection(object? sender, RoutedEventArgs e)
+        => OpenFilterSheet(EditorViewModel.FilterMenuKind.LensCorrection, "Lens Correction", LensCorrectionControls);
+
+    private void OpenFilterSheet(EditorViewModel.FilterMenuKind kind, string title, Avalonia.Controls.Control group)
+    {
+        if (Vm?.OpenFilterSheet(kind) == true)
+        {
+            ShowFilterSheet(title, group);
+            FilterSliderSet(Vm.FilterState);
+        }
+    }
+
+    /// <summary>
+    /// One handler for every filter slider. A record is immutable, so each change is written back
+    /// as a whole settings object; reading all sliders (not just the sender) keeps the filter's own
+    /// parameters independent of which control fired.
+    /// </summary>
+    private void OnFilterSlider(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (Vm?.OpenFilter is not { } kind)
+        {
+            return;
+        }
+
+        var next = Vm.FilterState with
+        {
+            Radius = RadiusSlider.Value,
+            Angle = AngleSlider.Value,
+            Distance = DistanceSlider.Value,
+            Amount = NoiseAmountSlider.Value,
+            Distortion = DistortionSlider.Value,
+            Gaussian = GaussianNoiseCheck.IsChecked == true,
+            Monochromatic = MonochromeNoiseCheck.IsChecked == true,
+        };
+        Vm.SetFilterState(next);
+        WriteFilterReadouts(next);
+    }
+
+    private void OnFilterCheck(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.OpenFilter is not { })
+        {
+            return;
+        }
+
+        var next = Vm.FilterState with
+        {
+            Gaussian = GaussianNoiseCheck.IsChecked == true,
+            Monochromatic = MonochromeNoiseCheck.IsChecked == true,
+        };
+        Vm.SetFilterState(next);
+    }
+
+    private void OnFilterOk(object? sender, RoutedEventArgs e)
+    {
+        Vm?.CommitFilter();
+        HideFilterPanel();
+    }
+
+    private void OnFilterCancel(object? sender, RoutedEventArgs e)
+    {
+        Vm?.CancelFilter();
+        HideFilterPanel();
+    }
 
     private void OnAdjustmentOk(object? sender, RoutedEventArgs e)
     {

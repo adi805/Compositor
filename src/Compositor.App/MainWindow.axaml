@@ -48,8 +48,18 @@
         <MenuItem Header="Hue/_Saturation..." Click="OnAdjustHueSat" />
         <MenuItem Header="_Exposure..." Click="OnAdjustExposure" />
         <MenuItem Header="_Gradient Map..." Click="OnAdjustGradientMap" />
+        <MenuItem Header="_Grain..." Click="OnAdjustGrain" />
         <Separator />
         <MenuItem Header="In_vert colors" Click="OnInvertColors" />
+      </MenuItem>
+      <MenuItem Header="_Filter">
+        <MenuItem Header="_Gaussian Blur..." Click="OnFilterGaussianBlur" />
+        <MenuItem Header="_Motion Blur..." Click="OnFilterMotionBlur" />
+        <MenuItem Header="Add _Noise..." Click="OnFilterAddNoise" />
+        <MenuItem Header="Lens _Correction..." Click="OnFilterLensCorrection" />
+        <Separator />
+        <MenuItem Header="Remove _Background..." IsEnabled="False" ToolTip.Tip="Needs the ML workstream (upstream uses Apple Vision)" />
+        <MenuItem Header="Content-_Aware Fill..." IsEnabled="False" ToolTip.Tip="Needs the ML workstream (upstream uses Apple Vision)" />
       </MenuItem>
       <MenuItem Header="Ima_ge">
         <MenuItem Header="_Image Size..." Click="OnImageSize" />
@@ -177,9 +187,60 @@
               <ColorPicker x:Name="HighlightPicker" Height="44" ColorChanged="OnGradientMapColor" />
               <CheckBox x:Name="ReverseCheck" Content="Reverse" Checked="OnGradientMapReverse" Unchecked="OnGradientMapReverse" />
             </StackPanel>
+            <!-- Grain (an image adjustment upstream, so it lives in this sheet) -->
+            <StackPanel x:Name="GrainControls" Spacing="6" IsVisible="False">
+              <TextBlock Text="Amount" /><Slider x:Name="GrainAmount" Minimum="0" Maximum="100" Value="25" ValueChanged="OnGrainSlider" />
+              <TextBlock Text="Size" /><Slider x:Name="GrainSize" Minimum="0.5" Maximum="20" Value="1.5" ValueChanged="OnGrainSlider" />
+              <TextBlock Text="Roughness" /><Slider x:Name="GrainRoughness" Minimum="0" Maximum="100" Value="50" ValueChanged="OnGrainSlider" />
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
               <Button x:Name="AdjustmentOk" Content="OK" Click="OnAdjustmentOk" />
               <Button x:Name="AdjustmentCancel" Content="Cancel" Click="OnAdjustmentCancel" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <Border x:Name="FilterPanel" Background="#E6202020" CornerRadius="8"
+                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="12" Padding="14" Width="340" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="FilterTitle" FontWeight="Bold" />
+            <StackPanel x:Name="GaussianBlurControls" Spacing="6" IsVisible="False">
+              <TextBlock><Run Text="Radius" /><Run x:Name="RadiusReadout" Text=" 1.0" /></TextBlock>
+              <Slider x:Name="RadiusSlider" Minimum="0.1" Maximum="250" Value="1"
+                      ToolTip.Tip="Standard deviation of the blur, in layer pixels"
+                      ValueChanged="OnFilterSlider" />
+            </StackPanel>
+            <StackPanel x:Name="MotionBlurControls" Spacing="6" IsVisible="False">
+              <TextBlock><Run Text="Angle" /><Run x:Name="AngleReadout" Text=" 0" /></TextBlock>
+              <Slider x:Name="AngleSlider" Minimum="-90" Maximum="90" Value="0"
+                      ToolTip.Tip="Counterclockwise from horizontal, as in Photoshop"
+                      ValueChanged="OnFilterSlider" />
+              <TextBlock><Run Text="Distance" /><Run x:Name="DistanceReadout" Text=" 10" /></TextBlock>
+              <Slider x:Name="DistanceSlider" Minimum="1" Maximum="2000" Value="10"
+                      ToolTip.Tip="Length of the streak, in layer pixels"
+                      ValueChanged="OnFilterSlider" />
+            </StackPanel>
+            <StackPanel x:Name="AddNoiseControls" Spacing="6" IsVisible="False">
+              <TextBlock><Run Text="Amount" /><Run x:Name="NoiseAmountReadout" Text=" 10" /></TextBlock>
+              <Slider x:Name="NoiseAmountSlider" Minimum="0.1" Maximum="400" Value="10"
+                      ToolTip.Tip="Photoshop noise percentage: uniform noise spans plus or minus this share of half the range"
+                      ValueChanged="OnFilterSlider" />
+              <CheckBox x:Name="GaussianNoiseCheck" Content="Gaussian"
+                        Checked="OnFilterCheck" Unchecked="OnFilterCheck" />
+              <CheckBox x:Name="MonochromeNoiseCheck" Content="Monochromatic"
+                        Checked="OnFilterCheck" Unchecked="OnFilterCheck" />
+            </StackPanel>
+            <StackPanel x:Name="LensCorrectionControls" Spacing="6" IsVisible="False">
+              <TextBlock><Run Text="Remove Distortion" /><Run x:Name="DistortionReadout" Text=" 0" /></TextBlock>
+              <Slider x:Name="DistortionSlider" Minimum="-100" Maximum="100" Value="0"
+                      ToolTip.Tip="Positive straightens barrel bowing, negative straightens pincushion"
+                      ValueChanged="OnFilterSlider" />
+              <TextBlock Text="Positive crops the corners; negative turns them transparent."
+                         FontSize="11" Opacity="0.7" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button x:Name="FilterOk" Content="OK" Click="OnFilterOk" />
+              <Button x:Name="FilterCancel" Content="Cancel" Click="OnFilterCancel" />
             </StackPanel>
           </StackPanel>
         </Border>

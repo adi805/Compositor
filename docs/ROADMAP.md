@@ -155,3 +155,12 @@ Acceptance:
 - Flagged: `net8.0` reaches EOL 2026-11-10, same date as net9. net10.0 is the LTS (2028-11-14) → the TFM bump is required before Task 13's v1.0
 - Free win found: SkiaSharp 2.88.9 is already in the tree via Avalonia.Skia and exposes `SKImage.Encode(SKEncodedImageFormat, int)` → Task 10's JPEG export does not require a hand-written JPEG encoder
 - See `docs/TECH-STACK.md` for the pin table, the docs-version trap, and the verify commands
+
+## Filters (WS9) - 2026-09-24
+- Set filter = Filters.swift: Gaussian Blur, Motion Blur, Add Noise, Lens Correction (menu Filter) + Grain (menu Adjust, sesuai upstream menandainya image adjustment)
+- Add Noise, Lens Correction dan Grain diport bit-eksak dari kernel C upstream; blur dua-buffer premultiplied dengan margin sebar dan edge unclamped seperti kontrak upstream
+- Motion radius = distance/sqrt(12); seed per-aplikasi lewat parameter, bukan state global
+- Remove Background + Content-Aware Fill: entri menu ada tapi disabled dengan tooltip, implementasinya butuh Apple Vision → WS12 (ONNX)
+- Bug beneran ketangkep test: sheet Adjust bisa numpuk di atas sheet Filter yang masih hidup (guard hanya satu arah). Ditutup dua arah.
+- Tests: 41 Core + 10 App; 242 Core + 93 App = 335 hijau, build 0 warning
+- Known gaps: preview full-res (upstream low-res saat drag), dial sudut drag, ML dua entri
