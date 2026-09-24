@@ -103,7 +103,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | Upstream file | LOC | Status | Catatan |
 |---|---|---|---|
 | EditorCanvas.swift | 1814 | partial | CanvasView: paint/zoom/pan; belum marquee/rulers/overlays |
-| TiledLayerRenderer.swift | 419 | missing | WS11 (perf) |
+| TiledLayerRenderer.swift | 419 | partial | WS11 (perf): pemilihan tile diport ke Core (`TileGrid`: `Support(level)`, `Aligned`, `Interiors`, `PixelRect`) dengan 24 golden hitungan tangan, termasuk bukti bahwa dab 100 px di kanvas 4096 menyeleksi 4 dari 256 kotak. Gap: komposisi piece (region + margin, kompres ke level, clip hard-edge) belum disambung ke `CanvasView`, jadi render masih satu gambar penuh |
 | TransformOverlay.swift | 327 | missing | WS11 |
 | RasterSnapshot.swift | 176 | partial | Flatten kita |
 | LayerRenderer.swift | 173 | partial | |
