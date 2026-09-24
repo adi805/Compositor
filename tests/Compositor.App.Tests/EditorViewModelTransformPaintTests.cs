@@ -1,6 +1,7 @@
 using Compositor.App;
 using Compositor.Core;
 using Compositor.Core.Imaging;
+using Compositor.Core.Selection;
 using Xunit;
 
 namespace Compositor.App.Tests;
@@ -104,5 +105,25 @@ public class EditorViewModelTransformPaintTests
         vm.EndTool();
 
         Assert.True(AlphaAt(vm.ActiveLayer!, 640, 360) > 200);
+    }
+
+    [Fact]
+    public void SelectionOnTheCanvas_BoundsTheBrushOnAMovedLayer()
+    {
+        // Selected document x in [0,250). On a layer shifted +200 that is layer x in
+        // [0,50), so a cursor at document 240 (= layer 40) is inside and document 400
+        // (= layer 200) is outside, even though both look "inside the picture".
+        var vm = VmMovedBy(200);
+        vm.Doc.Selection = DocumentSelection.ApplyTo(
+            null, SelectionShape.Rectangle(0, 0, 250, CanvasHeight, SelectionMode.Replace));
+
+        Assert.True(vm.BeginTool(240, 400));
+        vm.EndTool();
+        Assert.True(AlphaAt(vm.ActiveLayer!, 40, 400) > 200, "inside the selection should paint");
+        Assert.Equal(0, AlphaAt(vm.ActiveLayer!, 200, 400));
+
+        Assert.True(vm.BeginTool(400, 400));
+        vm.EndTool();
+        Assert.Equal(0, AlphaAt(vm.ActiveLayer!, 200, 400));
     }
 }

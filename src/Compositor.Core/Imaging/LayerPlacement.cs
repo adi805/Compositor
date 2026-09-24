@@ -1,3 +1,5 @@
+using Compositor.Core.Selection;
+
 namespace Compositor.Core.Imaging;
 
 /// <summary>
@@ -233,6 +235,48 @@ public static class LayerPlacement
         }
 
         return output;
+    }
+
+    /// <summary>
+    /// A document-space selection clip expressed in one layer's pixel space, so painting
+    /// through a transformed layer is still bounded by the selection the user drew on the
+    /// canvas. The result is dense over the layer: consumers read it clip-locally, and
+    /// after a rotation there is no longer a small rect that would have covered it.
+    /// </summary>
+    public static SelectionClip MapClipToLayer(
+        LayerTransform transform, SelectionClip clip, int canvasWidth, int canvasHeight,
+        int layerWidth, int layerHeight)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        if (clip.Coverage is not { } coverage)
+        {
+            return SelectionClip.Empty; // upstream: a clip without coverage touches nothing
+        }
+
+        var document = new byte[canvasWidth * canvasHeight];
+        for (var y = 0; y < clip.Height; y++)
+        {
+            var sourceY = clip.Y + y;
+            if (sourceY < 0 || sourceY >= canvasHeight)
+            {
+                continue;
+            }
+
+            for (var x = 0; x < clip.Width; x++)
+            {
+                var sourceX = clip.X + x;
+                if (sourceX < 0 || sourceX >= canvasWidth)
+                {
+                    continue;
+                }
+
+                document[(sourceY * canvasWidth) + sourceX] = coverage[(y * clip.Width) + x];
+            }
+        }
+
+        return new SelectionClip(
+            0, 0, layerWidth, layerHeight,
+            PlaceMask(transform, document, canvasWidth, canvasHeight, layerWidth, layerHeight));
     }
 
     private static void SampleBilinear(

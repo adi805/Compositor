@@ -194,6 +194,29 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// The clip a tool has to respect, in the layer's own pixel space. A selection is drawn
+    /// on the canvas, so a transformed layer needs it pushed back through the same mapping
+    /// the brush uses; otherwise the selection bounds the place the layer used to be.
+    /// </summary>
+    private SelectionClip? ClipForLayer(Layer layer, RasterSurface surface)
+    {
+        if (Doc.Selection is not { IsEmpty: false } selection)
+        {
+            return null;
+        }
+
+        var clip = selection.Clip(Doc.Width, Doc.Height);
+        if (surface.Width == Doc.Width && surface.Height == Doc.Height
+            && LayerPlacement.IsIdentity(layer.Transform, Doc.Width, Doc.Height))
+        {
+            return clip;
+        }
+
+        return LayerPlacement.MapClipToLayer(
+            layer.Transform, clip, Doc.Width, Doc.Height, surface.Width, surface.Height);
+    }
+
+    /// <summary>
     /// Pointer-down dispatch for the paint-family tools (brush, blur, smudge,
     /// clone, gradient, shape). Magic wand is click-once: it selects and
     /// returns. Returns false when the tool did not take the drag.
@@ -225,7 +248,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         docX = paint.X;
         docY = paint.Y;
 
-        _toolClip = Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
+        _toolClip = ClipForLayer(layer, surface);
 
         switch (Tool)
         {
@@ -551,7 +574,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         _strokeSurface = layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
         _strokePath = [(docX, docY)];
         _strokeBefore = (byte[])_strokeSurface.Pixels.Clone();
-        _strokeClip = Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
+        _strokeClip = ClipForLayer(layer, _strokeSurface);
         _strokeSettings = SnapshotBrushSettings();
         _strokeCoverage = new StrokeCoverage(_strokeSurface.Width, _strokeSurface.Height, _strokeSettings, _strokeClip);
         _strokeCoverage.WalkTo(docX, docY); // first dab lands immediately (upstream walk)
