@@ -59,7 +59,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
 | ImageAdjustments.swift | 134 | done | WS4+WS9: AdjustmentColor, Exposure, GradientMap, Grain (value-noise lattice + midtone weighting + origin/unitsPerPixel document-space pinning) semua port |
 | DocumentHistory.swift | 119 | partial | UndoHistory ada (per-command); belum edit-group coalescing |
-| GuidedMatte.swift | 118 | missing | WS12. BUKAN ML: guided filter He/Sun/Tang murni aritmatika (box running-sum + slope/offset). Prasyarat SubjectRemoval preset Advanced |
+| GuidedMatte.swift | 118 | partial | WS12. BUKAN ML: guided filter He/Sun/Tang murni aritmatika (box running-sum + slope/offset). Port C# di Core + 10 golden (7eb8cb3). Gap: belum dipanggil SubjectRemoval preset Advanced |
 | LayerAdjustment.swift | 112 | partial | WS4: AdjustmentKind + settings ported; non-destructive adjustment LAYERS not yet |
 | SubjectRemoval.swift | 110 | partial | WS12: jalur ONNX terbukti hidup (4 test spike, 365b057). Belum: estimator di App, 4 field setting upstream, commit ke alpha, UI. Lihat seksi WS12 |
 | AdjustmentEditing.swift | 110 | partial | WS4: sheet state + commit/cancel in VM; preview synchronous (no async pipeline) |
