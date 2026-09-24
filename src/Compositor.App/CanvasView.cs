@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Rendering;
+using Compositor.App.Rendering;
 using Compositor.Core;
 
 namespace Compositor.App;
@@ -44,7 +45,7 @@ public sealed class CanvasView : Control, ICustomHitTest
         set => SetValue(ViewModelProperty, value);
     }
 
-    private readonly Dictionary<Layer, (WriteableBitmap Bitmap, long Version)> _pixelCache = new();
+    private readonly Dictionary<Layer, (WriteableBitmap Bitmap, long Version, int Level)> _pixelCache = new();
     private readonly List<LayerRow> _attachedRows = new();
     private EditorViewModel? _attached;
     private Point? _panLast;
@@ -127,15 +128,22 @@ public sealed class CanvasView : Control, ICustomHitTest
 
             if (layer.Pixels is { } surface)
             {
+                // The same placement the exporter computes: the rect the layer's own
+                // pixels land in, spun about that rect's centre. Seeing it and saving
+                // it have to agree, or the canvas is a lie.
+                var dest = Scaled(canvasRect, ViewModel.Doc, layer.Transform);
                 // Live adjustment preview replaces the active layer's own pixels.
                 var preview = layer == ViewModel.ActiveLayer ? ViewModel.AdjustmentPreviewSurface : null;
-                var bitmap = preview is not null ? GetPreviewBitmap(preview) : GetBitmap(layer, surface);
+                var source = preview ?? surface;
+                // Draw from the halved copy closest to the size it lands at. Resampling a big
+                // surface straight down in one step is exactly what makes it come out soft.
+                var factor = source.Width > 0 ? dest.Width / source.Width : 1d;
+                var (drawn, level) = DownsampleCache.Shared.For(source, factor);
+                var bitmap = preview is not null
+                    ? GetPreviewBitmap(drawn, level)
+                    : GetBitmap(layer, drawn, surface.Version, level);
                 if (bitmap is not null)
                 {
-                    // The same placement the exporter computes: the rect the layer's own
-                    // pixels land in, spun about that rect's centre. Seeing it and saving
-                    // it have to agree, or the canvas is a lie.
-                    var dest = Scaled(canvasRect, ViewModel.Doc, layer.Transform);
                     var angle = layer.Transform.RotationDegrees;
                     if (angle != 0)
                     {
@@ -378,12 +386,13 @@ public sealed class CanvasView : Control, ICustomHitTest
     /// <summary>Layer pixel preview, rebuilt only when the surface Version moved.</summary>
     private WriteableBitmap? _previewBitmap;
     private long _previewGeneration = -1;
+    private int _previewLevel = -1;
 
     /// <summary>Adjustment preview bitmap, rebuilt only when the preview generation moved.</summary>
-    private WriteableBitmap? GetPreviewBitmap(RasterSurface preview)
+    private WriteableBitmap? GetPreviewBitmap(RasterSurface preview, int level)
     {
         var generation = ViewModel?.AdjustmentPreviewGeneration ?? -1;
-        if (_previewBitmap is not null && _previewGeneration == generation)
+        if (_previewBitmap is not null && _previewGeneration == generation && _previewLevel == level)
         {
             return _previewBitmap;
         }
@@ -391,6 +400,7 @@ public sealed class CanvasView : Control, ICustomHitTest
         _previewBitmap?.Dispose();
         _previewBitmap = null;
         _previewGeneration = generation;
+        _previewLevel = level;
         WriteableBitmap bitmap;
         try
         {
@@ -411,11 +421,14 @@ public sealed class CanvasView : Control, ICustomHitTest
         return bitmap;
     }
 
-    private WriteableBitmap? GetBitmap(Layer layer, RasterSurface surface)
+    private WriteableBitmap? GetBitmap(Layer layer, RasterSurface surface, long sourceVersion, int level)
     {
         if (_pixelCache.TryGetValue(layer, out var cached))
         {
-            if (cached.Version == surface.Version)
+            // Keyed on the source surface's version, not the reduced copy's: a reduced copy is
+            // rebuilt from scratch on every call, so its own version never moves, and reusing it
+            // after a paint stroke would draw the pre-stroke pixels.
+            if (cached.Version == sourceVersion && cached.Level == level)
             {
                 return cached.Bitmap;
             }
@@ -441,7 +454,7 @@ public sealed class CanvasView : Control, ICustomHitTest
             return null; // headless/no-render-context: fall back to placeholder rendering
         }
 
-        _pixelCache[layer] = (bitmap, surface.Version);
+        _pixelCache[layer] = (bitmap, sourceVersion, level);
         return bitmap;
     }
 

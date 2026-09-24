@@ -109,7 +109,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | LayerRenderer.swift | 173 | partial | |
 | MetalBrushCoverage.swift | 162 | partial | CPU coverage path kita |
 | LiveMaskRenderer.swift | 145 | missing | WS5 |
-| DownsampleCache.swift | 112 | missing | WS11 |
+| DownsampleCache.swift | 112 | partial | WS11: `DownsampleLevels` (Core, aturan level + cakupan pixel, 27 golden) dan `DownsampleCache` (App, chain halving 2x persis, LRU ke pixel budget, invalidasi lewat Version surface) dipakai `CanvasView` buat milih copy terdekat. Gap: halving pakai Skia high-quality, bukan Lanczos vImage; belum diukur perf di kanvas besar |
 | BrushCursorOverlay.swift | 95 | missing | WS7 |
 | CanvasViewport.swift | 72 | partial | View transform ada |
 | SampleRingOverlay.swift | 29 | missing | WS8 (clone/smudge aid) |
