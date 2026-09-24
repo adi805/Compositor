@@ -10,7 +10,6 @@
     <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.22" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Compositor.Core\Compositor.Core.csproj" />

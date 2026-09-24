@@ -17,7 +17,9 @@ jobs:
         run: dotnet restore Compositor.Windows.sln
       - name: Build
         run: dotnet build Compositor.Windows.sln --no-restore -c Release
-      - name: Test
+      - name: Test (Core)
         run: dotnet test tests/Compositor.Core.Tests --no-build -c Release
+      - name: Test (App)
+        run: dotnet test tests/Compositor.App.Tests --no-build -c Release
       - name: Smoke (App entry point)
         run: dotnet run --project src/Compositor.App -c Release --no-build -- --smoke

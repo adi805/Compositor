@@ -21,13 +21,18 @@ jobs:
         run: |
           cd publish
           zip -r ../Compositor-Windows-${GITHUB_REF_NAME}-win-x64.zip .
+      - name: Checksums
+        run: sha256sum "Compositor-Windows-${GITHUB_REF_NAME}-win-x64.zip" > SHA256SUMS
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          NOTES="docs/releases/${GITHUB_REF_NAME}.md"
+          [ -f "$NOTES" ] || NOTES="docs/RELEASE-NOTES.md"
           gh release create "${GITHUB_REF_NAME}" \
             "Compositor-Windows-${GITHUB_REF_NAME}-win-x64.zip" \
+            "SHA256SUMS" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Compositor.Windows ${GITHUB_REF_NAME}" \
-            --notes "Pre-alpha dev preview. Self-contained Windows build (no .NET install needed). Unzip, run Compositor.App.exe (UI launches directly; use --smoke for the headless check). Features: document model, layers panel, brush painting with per-stroke undo/redo, .comp project round-trip." \
+            --notes-file "$NOTES" \
             --latest
