@@ -176,6 +176,24 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     private SelectionClip? _toolClip;
 
     /// <summary>
+    /// A document point expressed in the layer's own pixel space. Rendering places a layer
+    /// through its transform, so editing has to run the same mapping backwards; without it
+    /// the ink lands where the layer used to be and not under the cursor.
+    /// </summary>
+    private (float X, float Y) LayerPaintPoint(Layer layer, RasterSurface surface, float docX, float docY)
+    {
+        if (surface.Width == Doc.Width && surface.Height == Doc.Height
+            && LayerPlacement.IsIdentity(layer.Transform, Doc.Width, Doc.Height))
+        {
+            return (docX, docY); // the ordinary case, no mapping involved
+        }
+
+        var (x, y) = LayerPlacement.MapFor(
+            layer.Transform, surface.Width, surface.Height, Doc.Width, Doc.Height).ToLayer(docX, docY);
+        return ((float)x, (float)y);
+    }
+
+    /// <summary>
     /// Pointer-down dispatch for the paint-family tools (brush, blur, smudge,
     /// clone, gradient, shape). Magic wand is click-once: it selects and
     /// returns. Returns false when the tool did not take the drag.
@@ -200,6 +218,13 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         }
 
         var surface = layer.Pixels ??= new RasterSurface(Doc.Width, Doc.Height);
+
+        // From here on the tool's coordinates are layer coordinates: every branch below
+        // writes into the layer's own buffer, which is what the placement transform maps.
+        var paint = LayerPaintPoint(layer, surface, docX, docY);
+        docX = paint.X;
+        docY = paint.Y;
+
         _toolClip = Doc.Selection is { IsEmpty: false } sel ? sel.Clip(Doc.Width, Doc.Height) : null;
 
         switch (Tool)
@@ -274,6 +299,13 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         if (!IsStrokeActive || _toolSurface is null)
         {
             return;
+        }
+
+        if (ActiveLayer is { } strokeLayer)
+        {
+            var paint = LayerPaintPoint(strokeLayer, _toolSurface, docX, docY);
+            docX = paint.X;
+            docY = paint.Y;
         }
 
         if (Tool == EditorTool.Brush)
@@ -497,8 +529,9 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         Doc.Layers.FirstOrDefault(l => l.Id == Doc.ActiveLayerId);
 
     /// <summary>
-    /// Starts a stroke on the active layer in DOCUMENT coordinates.
-    /// Materializes the layer's pixel surface if it is still blank.
+    /// Starts a stroke on the active layer in the layer's own pixel coordinates
+    /// (BeginTool hands over already-mapped points). Materializes the layer's pixel
+    /// surface if it is still blank.
     /// Returns false when there is nothing to paint on (no active layer,
     /// locked layer) or a stroke is already in progress.
     /// </summary>
@@ -528,8 +561,8 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Extends the in-progress stroke to a new document point, laying dabs at
-    /// even spacing for immediate feedback. Undo is recorded once per whole
+    /// Extends the in-progress stroke to a new point in the layer's pixel space, laying
+    /// dabs at even spacing for immediate feedback. Undo is recorded once per whole
     /// stroke, at <see cref="EndStroke"/>.
     /// </summary>
     public void ContinueStroke(float docX, float docY)
