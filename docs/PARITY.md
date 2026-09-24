@@ -1,8 +1,13 @@
 # Parity Matrix: Compositor-Windows vs upstream Mac Compositor
 
 Target: 100% fungsional paritas dengan `robbietilton/Compositor` (Mac, MIT).
-Sumber audit: clone upstream 2026-09-21, 282 file Swift, 24.018 LOC
-(Document 8.071 / Rendering 3.583 / UI 3.425 / IO 1.020 + kernels C).
+Sumber audit: target app Mac saja, yaitu `Compositor/Compositor/` di clone upstream
+2026-09-21. Terukur 2026-09-24: **92 file Swift, 16.755 LOC** (17.642 termasuk kernel C;
+Document 8.071 / Rendering 3.583 + kernel / UI 3.425 / IO 1.020).
+Angka lama di baris ini (282 file, 24.018 LOC) salah dan tidak bisa direproduksi: itu
+tercampur kloningan `Revan67/Compositor-Windows` yang hidup di `compositor/win/`
+(141 file Swift, 24.018 LOC), bukan upstream Mac.
+Resep ukur: `find Compositor/Compositor -name '*.swift' | xargs wc -l | tail -1`.
 
 Status: `done` = setara fungsional · `partial` = ada tapi belum setara · `missing` = belum ada · `n/a` = platform-spesifik Mac.
 Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update tiap workstream selesai.
@@ -13,6 +18,8 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 |---|---|---|---|
 | BrushStroke.swift | 899 | done | WS7: stamping/spacing/hardness/opacity-cap/eraser port penuh (coverage mask screen/max); flow + pressure = n/a upstream (gak ada di Mac) |
 | EditorSession.swift | 689 | partial | Peran session dipecah ke EditorViewModel; belum tool-state lengkap |
+| EditorSession+Brush.swift | 201 | partial | State alat gambar ada di `EditorViewModel` (BeginTool/ContinueTool, hardness/flow/size, commit stroke). Belum di-audit baris per baris terhadap extension ini. |
+| EditorSession+Projects.swift | 55 | partial | Simpan/buka proyek lewat `ProjectStore` + `EditorViewModel`; perilaku session multi-proyek belum setara. |
 | HueSaturation.swift | 574 | partial | WS4: band math + master/colorize + sheet; per-band spectrum UI & eyedroppers missing |
 | Filters.swift | 473 | partial | WS9: Gaussian/Motion blur, Add Noise, Lens Correction + Grain ported (noise/lens/grain bit-exact from NoisePixels.c, LensPixels.c, adjust_grain). RemoveBackground + ContentAwareFill = Apple Vision, masuk WS12 |
 | LayerMask.swift | 419 | missing | WS5 (layer mask system terpisah, bukan group) |
@@ -88,6 +95,9 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 
 | Upstream | Status | Catatan |
 |---|---|---|
+| ContentView (386) | partial | Kerangka jendela, menu dan host kanvas ada di `MainWindow.axaml`; chrome tab proyek dan thumbnail belum 1:1 (lihat baris ProjectTabs/CanvasThumbnail). |
+| CompositorApp (270) | partial | Entry app, menu command dan shortcut ada. "Check for Updates..." TIDAK ada, lihat baris Auto-update. |
+| Auto-update (Sparkle) | missing | Upstream: `CompositorApp.swift:84` (menu) + `CompositorApplicationDelegate.swift:11` (`SPUStandardUpdaterController`, start 1s setelah launch). Sparkle tidak ada di Windows; padanannya = cek GitHub Releases, unduh asset, ganti binary, relaunch. Belum masuk plan. |
 | NativeLayerList (896) | partial | Layer list add/del/reorder/visibility; belum drag-reorder/grup/thumbnail |
 | HueSaturationSheet (193) | partial | WS4: 7 band + hue/sat/lightness + colorize; spectrum per-band + eyedropper belum |
 | ColorPickerSheet (185) | partial | Swatch sederhana; belum picker penuh |
@@ -119,7 +129,9 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 
 ## Ringkasan
 
-- Setelah WS10: done 14 · partial 41 · missing 32 · n/a 3 = 90 baris matriks. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
+- Setelah WS10: done 14 · partial 41 · missing 32 · n/a 3 = 90 baris matriks.
+- **Koreksi audit 2026-09-24, denominator berubah: 95 baris** (done 14 · partial 45 · missing 33 · n/a 3). Yang salah bukan status fitur, tapi angka sumbernya: baris "282 file Swift, 24.018 LOC" di kepala dokumen itu tercampur kloningan `Revan67/Compositor-Windows` yang hidup di `compositor/win/` (141 file Swift, 24.018 LOC). Target sejati = 92 file, 16.755 LOC. Cross-check daftar file vs nama yang disebut baris nemu 4 file / 912 LOC yang tidak pernah mewakili apa pun: ContentView (386), CompositorApp (270), EditorSession+Brush (201), EditorSession+Projects (55). Keempatnya sekarang punya baris, plus satu kapabilitas yang sebelumnya tidak tercatat sama sekali: **Auto-update (Sparkle)**, yang di Windows butuh mekanisme sendiri dan belum masuk plan. Cara ceknya (wajib diulang tiap workstream): daftarkan `find Compositor/Compositor -name '*.swift'`, potong ekstensinya, lalu cari yang namanya tidak muncul di badan matriks. Ekstensi Swift boleh pakai `+` di nama (`EditorSession+Brush`), jadi pola nama yang cuma mengizinkan alfanumerik akan melaporkan cakupan 0% yang palsu.
+- Pembanding jujur: port Windows independen lain (Revan67/Compositor-Windows; C#, Avalonia 12, SkiaSharp 3.119, .NET 10; fase 1 selesai dengan 114 test; kernel C upstream dipakai ulang tanpa perubahan) memang ada dan **sengaja tidak mengikuti app Mac** serta memakai format proyek sendiri. Artinya "100% paritas" belum dicapai siapa pun, dan sisa pekerjaannya mirip: fase 3-4 mereka adalah seleksi/brush/retouch/filters, remove-background ONNX, updater, dan installer. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
 - Urut dependensi (workstream plan): WS2 blend engine → WS3 selection → WS4 adjustments → WS5 layer power → WS6 geometry → WS7 brush v2 → WS8 tools → WS9 filters → WS10 IO/UX → WS11 rendering perf → WS12 ML decision → WS13 release.
 - Catatan jujur: SubjectRemoval/ContentFill/GuidedMatte di Mac pakai Apple Vision ML. Paritas di Windows berarti ONNX Runtime + model terbuka; keputusan arsitektur di WS12, hasilnya di-update di matriks ini.
 
