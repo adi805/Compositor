@@ -35,7 +35,11 @@ public static class Flatten
                 continue;
             }
 
-            var srcPx = src.Pixels;
+            // Position, size and rotation are a display transform (upstream's CTM), so the
+            // surface is resampled onto its placement rect. An untransformed layer gets its
+            // own buffer back with no copy, so the common path stays byte-identical.
+            var srcPx = LayerPlacement.Place(
+                layer.Transform, src.Pixels, src.Width, src.Height, doc.Width, doc.Height);
             var mode = layer.Blend;
             for (var i = 0; i < output.Length; i += 4)
             {

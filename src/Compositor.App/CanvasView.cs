@@ -114,6 +114,9 @@ public sealed class CanvasView : Control, ICustomHitTest
             }
         }
 
+        // Layers can now be moved or magnified past the canvas edge; everything they paint
+        // outside it belongs to the ruler/checker area, so the stack is clipped to the canvas.
+        using var canvasClip = context.PushClip(canvasRect);
         var tint = 0;
         foreach (var layer in LayerHierarchy.VisibleLayers(ViewModel.Doc.Layers))
         {
@@ -129,7 +132,22 @@ public sealed class CanvasView : Control, ICustomHitTest
                 var bitmap = preview is not null ? GetPreviewBitmap(preview) : GetBitmap(layer, surface);
                 if (bitmap is not null)
                 {
-                    context.DrawImage(bitmap, canvasRect);
+                    // The same placement the exporter computes: the rect the layer's own
+                    // pixels land in, spun about that rect's centre. Seeing it and saving
+                    // it have to agree, or the canvas is a lie.
+                    var dest = Scaled(canvasRect, ViewModel.Doc, layer.Transform);
+                    var angle = layer.Transform.RotationDegrees;
+                    if (angle != 0)
+                    {
+                        using (context.PushTransform(LayerGeometry.RotationAbout(angle, dest.Center)))
+                        {
+                            context.DrawImage(bitmap, dest);
+                        }
+                    }
+                    else
+                    {
+                        context.DrawImage(bitmap, dest);
+                    }
                 }
             }
             else
@@ -142,6 +160,7 @@ public sealed class CanvasView : Control, ICustomHitTest
 
             tint++;
         }
+
 
         RenderSelectionOverlay(context, canvasRect);
     }

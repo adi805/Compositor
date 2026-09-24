@@ -105,7 +105,8 @@ public static class SurfaceOps
             {
                 continue;
             }
-            var px = src.Pixels;
+            // Same placement path as PNG export, so a merged copy and a saved file agree.
+            var px = LayerPlacement.Place(layer.Transform, src.Pixels, src.Width, src.Height, width, height);
             for (var i = 0; i < output.Length; i += 4)
             {
                 if (px[i + 3] == 0)
