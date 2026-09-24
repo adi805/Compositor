@@ -1340,7 +1340,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Canvas pixels already held by layers. Upstream spends the 100 MP document budget from
+    /// Canvas pixels already held by layers. Upstream spends the document pixel budget from
     /// this number, recomputed per file so a batch cannot collectively overrun it.
     /// </summary>
     public long UsedPixels

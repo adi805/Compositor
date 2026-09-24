@@ -33,9 +33,9 @@ public sealed class CanvasResizeCommand : IUndoCommand
         {
             throw new ArgumentOutOfRangeException(nameof(newWidth), "Canvas size must be 1..30000.");
         }
-        if (newWidth * (long)newHeight > 100_000_000)
+        if (newWidth * (long)newHeight > ImageBudget.MaxSurfacePixels)
         {
-            throw new ArgumentOutOfRangeException(nameof(newWidth), "Canvas exceeds the 100 megapixel cap.");
+            throw new ArgumentOutOfRangeException(nameof(newWidth), $"Canvas exceeds the {ImageBudget.MaxSurfaceMegapixels} megapixel cap.");
         }
         if (!double.IsFinite(offsetX) || !double.IsFinite(offsetY)
             || Math.Abs(offsetX) > 1_000_000 || Math.Abs(offsetY) > 1_000_000)
@@ -156,7 +156,7 @@ public sealed class CanvasResizeCommand : IUndoCommand
 /// <summary>
 /// Image Size resample, upstream ImageResizer: every layer transform scales by
 /// (sx, sy); pixel surfaces resample bilinearly to the scaled size (max 1px).
-/// Same-dimension requests only update the resolution. Doc cap 100 megapixels.
+/// Same-dimension requests only update the resolution. Surface cap 200 megapixels.
 /// </summary>
 public sealed class ImageSizeCommand : IUndoCommand
 {
@@ -177,9 +177,9 @@ public sealed class ImageSizeCommand : IUndoCommand
         {
             throw new ArgumentOutOfRangeException(nameof(resolution), "Resolution must be 1..9600 DPI.");
         }
-        if (newWidth * (long)newHeight > 100_000_000)
+        if (newWidth * (long)newHeight > ImageBudget.MaxSurfacePixels)
         {
-            throw new ArgumentOutOfRangeException(nameof(newWidth), "Image exceeds the 100 megapixel cap.");
+            throw new ArgumentOutOfRangeException(nameof(newWidth), $"Image exceeds the {ImageBudget.MaxSurfaceMegapixels} megapixel cap.");
         }
         _newWidth = newWidth;
         _newHeight = newHeight;

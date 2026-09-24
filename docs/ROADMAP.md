@@ -168,7 +168,7 @@ Acceptance:
 ## IO parity (WS10) - 2026-09-24
 - JPEG export jadi: quality 0..1 (readout persen), matte untuk area transparan, DPI dokumen ditulis ke JFIF, hasil encode live keliatan ukurannya di sheet sebelum Save
 - PNG export sekarang baw density (pHYs) dari `Document.Resolution`, jadi ukuran cetak gak ilang begitu keluar file
-- Cap satu aturan buat dua arah: 1..30000 per sisi + 100MP, dihitung ulang per file pas impor batch
+- Cap satu aturan buat dua arah: 1..30000 per sisi + ceiling surface, dihitung ulang per file pas impor batch (angka ceiling dikoreksi di WS19)
 - Format matrix jadi kontrak, bukan komentar: filter dialog, pesan "unsupported", dan daftar gap semuanya dibaca dari situ; tiap baris impor dibuktiin test pake fixture nyata dari Pillow/ffmpeg
 - Drop file ke canvas = impor, dengan drop point sebagai posisi; gambar tanpa file (screenshot, drag dari browser) tetep kebaca tanpa nyentuh disk
 - Known gaps yang ditulis terang: TIFF + HEIC butuh codec di luar Skia build ini, thumbnail asset 96px belum dibuat, impor belum jadi undo step. `Layer.Transform` SEKARANG dihormati rendering layar + composit export (WS11); sisanya: flip masih di-bake dan flag-nya diabaikan renderer (butuh keputusan migrasi `.comp`), alat gambar masih nulis di koordinat kanvas, `TransformOverlay` handle drag belum ada
@@ -180,3 +180,12 @@ Acceptance:
 - GuidedFilter dipindah ke Core, dependency-free, 10 test golden angka tangan (impulse 3x3 jadi 1/9 di seluruh bidang dengan energi ke-lestarikan, box [2,5] jadi [3,4], slope -0,99955 bikin mask snap ke tepi guide, guide konstan = blur murni, dan math downscale 4000x3000 ke limit 1400 jadi 1400x1050 dengan radius 20 ke-champ 7).
 - Total: 339 Core + 149 App = 488 hijau, build bersih 0 warning, --smoke exit 0.
 - Masih terbuka buat nutup SubjectRemoval: estimator mask di App, empat field setting upstream yang belum ada di FilterSettings, commit ke alpha, preview low-res pas drag, dan subsystem layer mask (~900 LOC) supaya hasilnya non-destruktif seperti upstream. Atribusi NOTICE buat bobot wajib sebelum rilis.
+
+## Sinkronisasi upstream + limit dokumen (WS19) - 2026-09-25
+- **Drift ketemu, dan itu bukan drift kecil.** Seluruh audit paritas sampai hari ini berdiri di atas snapshot `a19db90` yang ternyata **177 commit di belakang** `upstream/main`. Yang tidak pernah masuk daftar periksa: 36 file Swift / 8.899 LOC, isinya PSD import-export, Camera RAW, Type tool, Layer Effects, Object Selection, Guides/Rulers, KeyboardShortcuts.
+- Header matriks dikoreksi dari 92 file / 16.755 LOC jadi **128 file / 28.877 LOC** di `c64183f`. Resep ukurnya ditulis di dokumen supaya angka berikutnya bisa diperiksa orang lain, bukan dipercaya.
+- **Limit dokumen naik ke semantik upstream.** Upstream memisahkan dua ceiling, kita mencampurnya: `maxSide = 30.000`, `maxSurfacePixels = 200 MP`, dan budget dokumen `min(800 MP, max(200 MP, RAM/16))`. Sebelum ini kita memakai 100 MP untuk keduanya, artinya canvas 100-200 MP yang sah di Mac ditolak di sini. Sekarang `ImageBudget` memakai rumus yang sama; di .NET RAM dibaca dari `GC.GetGCMemoryInfo()`.
+- Pesan error ikut berubah karena upstream menyusunnya dari konstanta itu, bukan dari teks tetap.
+- Repo di-set `upstream` = `robbietilton/Compositor` supaya `git fetch upstream` jadi cara rutin ngecek drift, dan klaim fork di dokumen dikoreksi: yang benar-benar fork dari upstream Mac di akun ini **nol**.
+- Tests: 349 Core + 153 App = **502 hijau**, build 0 warning.
+- Urutan berikutnya: 36 baris baru itu mayoritas `missing` dan belum masuk plan. Yang paling murah dulu: Guides + Rulers (435 LOC, murni UI), KeyboardShortcuts (319), TrimSheet (68), NumericScrub (63). Yang mahal dan butuh keputusan: PSD (1.945 LOC) dan Camera RAW (1.783 LOC).

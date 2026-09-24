@@ -16,7 +16,8 @@ public static class ProjectStore
     public const int Version = 2;
 
     public const int MaxSidePixels = 30_000;
-    public const long MaxTotalPixels = 100_000_000;
+    /// <summary>Upstream validates the canvas against <c>DocumentLimits.documentPixelBudget</c>.</summary>
+    public static long MaxTotalPixels => ImageBudget.DocumentPixelBudget;
     public const int MaxLayers = 10_000;
     public const int MaxManifestBytes = 4 * 1024 * 1024;
 

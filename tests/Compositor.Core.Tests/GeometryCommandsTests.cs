@@ -225,7 +225,7 @@ public class GeometryCommandsTests
     {
         var doc = new Document(8, 8);
         Assert.Throws<ArgumentOutOfRangeException>(() => new ImageSizeCommand(doc, 30_001, 8, 72));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ImageSizeCommand(doc, 10_000, 10_001, 72)); // > 100MP
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ImageSizeCommand(doc, 20_000, 20_000, 72)); // 400 MP, past the 200 MP surface ceiling
         Assert.Throws<ArgumentOutOfRangeException>(() => new ImageSizeCommand(doc, 8, 8, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new ImageSizeCommand(doc, 8, 8, 9601));
     }

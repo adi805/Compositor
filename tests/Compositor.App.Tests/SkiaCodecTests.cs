@@ -306,8 +306,8 @@ public class SkiaCodecTests
     [Fact]
     public void Budget_LargeImport_IsRejectedBeforeAnyAllocation()
     {
-        var error = Assert.Throws<ImageException>(() => ImageBudget.ValidateImport(20_000, 20_000, 0));
+        var error = Assert.Throws<ImageException>(() => ImageBudget.ValidateImport(29_000, 29_000, 0));
         Assert.Equal(ImageFailure.ImportTooLarge, error.Failure);
-        Assert.Contains("100-megapixel", error.Message, StringComparison.Ordinal);
+        Assert.Contains($"{ImageBudget.DocumentBudgetMegapixels}-megapixel", error.Message, StringComparison.Ordinal);
     }
 }

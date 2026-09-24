@@ -7,7 +7,7 @@ namespace Compositor.App.Imaging;
 /// <summary>A decoded image in the document's own convention: straight-alpha RGBA8, upright.</summary>
 public sealed record DecodedImage(int Width, int Height, byte[] Rgba, ImageFormat Format, int Orientation)
 {
-    /// Budget units this image consumes (upstream counts layers against 100 MP).
+    /// Budget units this image consumes (upstream counts every layer against the document budget).
     public long PixelCount => ImageBudget.PixelCount(Width, Height);
 }
 

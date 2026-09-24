@@ -10,7 +10,7 @@ namespace Compositor.Core.Tests;
 /// </summary>
 public class ImageIoTests
 {
-    // ----- budgets (upstream: 30,000 per side, 100 MP) -----
+    // ----- budgets (upstream DocumentLimits: 30,000 per side, 200 MP per surface, RAM-scaled document budget) -----
 
     [Theory]
     [InlineData(1, 1, 0, true)]
@@ -18,9 +18,9 @@ public class ImageIoTests
     [InlineData(1, 30_000, 0, true)]
     [InlineData(30_001, 1, 0, false)]
     [InlineData(0, 10, 0, false)]
-    [InlineData(10_000, 10_000, 0, true)] // exactly 100 MP
-    [InlineData(10_000, 10_000, 1, false)] // 100 MP plus one spent pixel
-    [InlineData(20_000, 20_000, 0, false)] // 400 MP
+    [InlineData(14_142, 14_142, 0, true)] // 199,996,164 px: inside the smallest document budget (200 MP)
+    [InlineData(29_000, 29_000, 0, false)] // 841 MP: past every document budget
+    [InlineData(1_000, 1_000, 800_000_000, false)] // spent budget already at the 800 MP ceiling
     public void Budget_Fits_MatchesUpstreamLimits(int w, int h, long used, bool expected) =>
         Assert.Equal(expected, ImageBudget.Fits(w, h, used));
 
@@ -29,7 +29,7 @@ public class ImageIoTests
     {
         var error = Assert.Throws<ImageException>(() => ImageBudget.ValidateExport(40_000, 1));
         Assert.Equal(ImageFailure.ExportTooLarge, error.Failure);
-        Assert.Equal("Image export supports canvases up to 100 megapixels and 30,000 pixels per side.", error.Message);
+        Assert.Equal("Image export supports canvases up to 200 megapixels and 30,000 pixels per side.", error.Message);
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class ImageIoTests
     {
         var error = Assert.Throws<ImageException>(() => ImageBudget.ValidateImport(1, 40_000, 0));
         Assert.Equal(ImageFailure.ImportTooLarge, error.Failure);
-        Assert.Contains("100-megapixel", error.Message, StringComparison.Ordinal);
+        Assert.Contains($"{ImageBudget.DocumentBudgetMegapixels}-megapixel", error.Message, StringComparison.Ordinal);
         Assert.Contains("30,000-pixel", error.Message, StringComparison.Ordinal);
     }
 
@@ -53,10 +53,45 @@ public class ImageIoTests
     public void Budget_Defaults_MatchUpstreamConstants()
     {
         Assert.Equal(30_000, ImageBudget.MaxSide);
-        Assert.Equal(100_000_000L, ImageBudget.MaxPixels);
+        Assert.Equal(200_000_000L, ImageBudget.MaxSurfacePixels);
         Assert.Equal(72d, ImageBudget.DefaultResolution);
         Assert.Equal(96, ImageBudget.ImportThumbnailLongSide);
         Assert.Equal(1_000, ImageBudget.PreviewLongSide);
+    }
+
+    [Fact]
+    public void Budget_SurfaceCeiling_IsTwoHundredMegapixels()
+    {
+        Assert.Equal(200, ImageBudget.MaxSurfaceMegapixels);
+
+        // 14,142^2 = 199,996,164 px: the largest square that still fits one surface.
+        ImageBudget.ValidateExport(14_142, 14_142);
+
+        // 14,143^2 = 200,024,449 px: one row past it.
+        var error = Assert.Throws<ImageException>(() => ImageBudget.ValidateExport(14_143, 14_143));
+        Assert.Equal(ImageFailure.ExportTooLarge, error.Failure);
+    }
+
+    [Fact]
+    public void Budget_DocumentCeiling_CountsWhatEveryLayerAlreadySpent()
+    {
+        var budget = ImageBudget.DocumentPixelBudget;
+        const long million = 1_000_000L;
+
+        // A 1,000 x 1,000 surface is 1 MP: it fits while the spent budget leaves room for it.
+        Assert.True(ImageBudget.Fits(1_000, 1_000, budget - million));
+        Assert.False(ImageBudget.Fits(1_000, 1_000, (budget - million) + 1));
+    }
+
+    [Fact]
+    public void Budget_DocumentCeiling_FollowsTheUpstreamRamFormula()
+    {
+        var expected = Math.Min(
+            800_000_000L,
+            Math.Max(ImageBudget.MaxSurfacePixels, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 16));
+
+        Assert.Equal(expected, ImageBudget.DocumentPixelBudget);
+        Assert.InRange(ImageBudget.DocumentPixelBudget, ImageBudget.MaxSurfacePixels, 800_000_000L);
     }
 
     // ----- content sniffing -----

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Compositor.Core.Imaging;
 
 /// <summary>
@@ -42,13 +44,18 @@ public sealed class ImageException : Exception
 
     public ImageFailure Failure { get; }
 
+    /// <summary>Upstream <c>DocumentLimits.maxSide.formatted()</c>: 30,000 with a separator.</summary>
+    private static string SideText { get; } = ImageBudget.MaxSide.ToString("N0", CultureInfo.InvariantCulture);
+
     /// The message upstream would show for this failure.
     public static string MessageFor(ImageFailure failure) => failure switch
     {
         ImageFailure.Unreadable => "The image could not be read. It may be damaged or unavailable.",
         ImageFailure.Unsupported => ImageFormatPolicy.UnsupportedImportMessage,
-        ImageFailure.ImportTooLarge => "This import exceeds the current 100-megapixel document budget or 30,000-pixel side limit.",
-        ImageFailure.ExportTooLarge => "Image export supports canvases up to 100 megapixels and 30,000 pixels per side.",
+        ImageFailure.ImportTooLarge =>
+            $"This import exceeds the current {ImageBudget.DocumentBudgetMegapixels}-megapixel document budget or {SideText}-pixel side limit.",
+        ImageFailure.ExportTooLarge =>
+            $"Image export supports canvases up to {ImageBudget.MaxSurfaceMegapixels} megapixels and {SideText} pixels per side.",
         ImageFailure.Render => "The canvas could not be rendered. Try a smaller canvas.",
         ImageFailure.Encode => "The image could not be encoded.",
         _ => "The image could not be handled.",

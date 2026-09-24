@@ -1,13 +1,20 @@
 # Parity Matrix: Compositor-Windows vs upstream Mac Compositor
 
 Target: 100% fungsional paritas dengan `robbietilton/Compositor` (Mac, MIT).
-Sumber audit: target app Mac saja, yaitu `Compositor/Compositor/` di clone upstream
-2026-09-21. Terukur 2026-09-24: **92 file Swift, 16.755 LOC** (17.642 termasuk kernel C;
-Document 8.071 / Rendering 3.583 + kernel / UI 3.425 / IO 1.020).
-Angka lama di baris ini (282 file, 24.018 LOC) salah dan tidak bisa direproduksi: itu
-tercampur kloningan `Revan67/Compositor-Windows` yang hidup di `compositor/win/`
-(141 file Swift, 24.018 LOC), bukan upstream Mac.
+Sumber audit: target app Mac saja, yaitu `Compositor/Compositor/` di clone upstream.
+Snapshot sekarang **`c64183f`** (upstream/main, tag terakhir v1.2.11), di-fetch 2026-09-25.
+Terukur di commit itu: **128 file Swift, 28.877 LOC** di app dir
+(Document 12.370 / Rendering 5.477 / UI 7.055 / IO 3.198); 192 file Swift di seluruh repo.
 Resep ukur: `find Compositor/Compositor -name '*.swift' | xargs wc -l | tail -1`.
+
+Riwayat koreksi denominator, karena dua-duanya pernah salah:
+1. Baris pertama matriks bilang 282 file / 24.018 LOC: itu tercampur kloningan
+   `Revan67/Compositor-Windows` yang hidup di `compositor/win/`, bukan upstream Mac.
+2. Koreksi berikutnya bilang 92 file / 16.755 LOC: itu benar untuk snapshot yang di-audit
+   (`a19db90`, "Publish update feed for Compositor 1.0.4"), tapi snapshot itu **177 commit
+   di belakang upstream/main**. Yang hilang bukan detail: 36 file / 8.899 LOC berisi PSD
+   import-export, Camera RAW, Type tool, Layer Effects, Object Selection, Guides/Rulers,
+   dan `DocumentLimits.swift`. Lihat seksi WS19.
 
 Status: `done` = setara fungsional · `partial` = ada tapi belum setara · `missing` = belum ada · `n/a` = platform-spesifik Mac.
 Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update tiap workstream selesai.
@@ -38,6 +45,17 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | LayerGroups.swift | 190 | partial | WS5: hierarchy entries/validate/visible, group selected + new folder + reorder undo-able, indent rows; drag-reorder di panel belum |
 | FloatingSelection.swift | 159 | partial | Floating overlay + nudge/commit/cancel; no drag-move yet |
 | ShapeTool.swift | 157 | missing | WS8 |
+| CameraRaw.swift | 638 | missing | WS19: RAW develop (Apple CoreImage RAW). Windows butuh decoder RAW sendiri |
+| LayerEffects.swift | 638 | missing | WS19: stroke/shadow/glow per layer |
+| ObjectSelection.swift | 298 | missing | WS19 |
+| CameraRawColor.swift | 282 | missing | WS19 |
+| TypeTool.swift | 263 | missing | WS19: type tool |
+| CameraRawGeometryCalibration.swift | 255 | missing | WS19 |
+| Guides.swift | 250 | missing | WS19: guides + snap |
+| ImageTrim.swift | 210 | missing | WS19: trim border transparan |
+| CameraRawDetailOptics.swift | 125 | missing | WS19 |
+| DocumentLimits.swift | 42 | done | WS19: diport jadi `ImageBudget`. 30.000 per sisi, **200 MP per surface**, budget dokumen skala RAM (min 800 MP, max 200 MP, RAM/16) |
+| ToolDefaults.swift | 22 | missing | WS19: preferensi tool yang nempel lintas tab dan lintas launch |
 | MagicWand.swift | 138 | partial | Contiguous flood-fill with tolerance; no sample-merged mode |
 | ImageAdjustments.swift | 134 | done | WS4+WS9: AdjustmentColor, Exposure, GradientMap, Grain (value-noise lattice + midtone weighting + origin/unitsPerPixel document-space pinning) semua port |
 | DocumentHistory.swift | 119 | partial | UndoHistory ada (per-command); belum edit-group coalescing |
@@ -71,6 +89,13 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | CanvasResizer.swift | 72 | done | WS6: CanvasResizeCommand (anchor offsets, fill extension layer, non-destructive) |
 | ImageImporter.swift | 63 | partial | WS10: budget 100MP/30k per file (dihitung ulang per file ala upstream), EXIF orientation, RGBA8 straight-alpha, gagal pakai taksonomi yang sama. Gap: HEIC + TIFF butuh codec yang gak ada di Skia build ini; thumbnail 96px asset belum dibuat |
 | ImageFileDrop.swift | 55 | partial | WS10: drop file ke canvas (pasteboard order, drop point jadi posisi), fallback ke image data in-memory buat screenshot/gambar dari browser (upstream salin ke file sementara), pesan gagal per-file. Gap: routing ke workspace/tab lain (ProjectWorkspace belum ada) |
+| PSD/PSDText.swift | 682 | missing | WS19: text layer di PSD |
+| PSD/PSDReader.swift | 543 | missing | WS19: PSD import |
+| PSD/PSDVector.swift | 282 | missing | WS19 |
+| PSD/PSDChannelCoder.swift | 194 | missing | WS19 |
+| PSD/PSDDocumentBuilder.swift | 144 | missing | WS19: PSD export |
+| RawImporter.swift | 124 | missing | WS19 |
+| PSD/PSDTypes.swift | 100 | missing | WS19 |
 | CompositorApplicationDelegate.swift | 43 | n/a | Lifecycle Mac |
 
 ## Rendering (upstream 3.583 LOC)
@@ -90,6 +115,10 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | SampleRingOverlay.swift | 29 | missing | WS8 (clone/smudge aid) |
 | AdjustmentSurface.swift | 17 | missing | WS4 |
 | SeparableBlend.swift | 17 | partial | PDF-correct ColorDodge/Burn dibutuhkan di WS2 |
+| InlineTextEditor.swift | 453 | missing | WS19 |
+| MetalLayerEffects.swift | 395 | missing | WS19: di Windows jalurnya Skia, bukan Metal |
+| LayerEffectsSurface.swift | 188 | missing | WS19 |
+| EffectsPreviewCache.swift | 164 | missing | WS19 |
 
 ## UI (upstream 3.425 LOC)
 
@@ -126,14 +155,58 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | ToolHeaderStyle (26) | partial | |
 | CropControls (24) | partial | WS6: crop numeric sheet + crop-to-selection; visual drag frame + snap + ratio di WS8 |
 | LayerMaskMenu (14) | missing | WS5 |
+| CameraRawColorControls (495) | missing | WS19 |
+| CameraRawControls (386) | missing | WS19 |
+| KeyboardShortcuts (319) | missing | WS19: peta shortcut lengkap |
+| CameraRawSlider (198) | missing | WS19 |
+| EffectsSheet (193) | missing | WS19 |
+| CameraRawDetailOpticsControls (189) | missing | WS19 |
+| CanvasRulers (185) | missing | WS19 |
+| TypeControls (157) | missing | WS19 |
+| CameraRawGeometryCalibrationControls (147) | missing | WS19 |
+| RawDevelopSheet (90) | missing | WS19 |
+| PSDConversionSheet (69) | missing | WS19 |
+| TrimSheet (68) | missing | WS19 |
+| NumericScrub (63) | missing | WS19: drag-to-scrub angka |
+| IndicatorlessScrollView (48) | n/a | Pola AppKit |
 
 ## Ringkasan
 
 - Setelah WS10: done 14 · partial 41 · missing 32 · n/a 3 = 90 baris matriks.
 - **Koreksi audit 2026-09-24, denominator berubah: 95 baris** (done 14 · partial 47 · missing 31 · n/a 3). Yang salah bukan status fitur, tapi angka sumbernya: baris "282 file Swift, 24.018 LOC" di kepala dokumen itu tercampur kloningan `Revan67/Compositor-Windows` yang hidup di `compositor/win/` (141 file Swift, 24.018 LOC). Target sejati = 92 file, 16.755 LOC. Cross-check daftar file vs nama yang disebut baris nemu 4 file / 912 LOC yang tidak pernah mewakili apa pun: ContentView (386), CompositorApp (270), EditorSession+Brush (201), EditorSession+Projects (55). Keempatnya sekarang punya baris, plus satu kapabilitas yang sebelumnya tidak tercatat sama sekali: **Auto-update (Sparkle)**, yang di Windows butuh mekanisme sendiri dan belum masuk plan. Cara ceknya (wajib diulang tiap workstream): daftarkan `find Compositor/Compositor -name '*.swift'`, potong ekstensinya, lalu cari yang namanya tidak muncul di badan matriks. Ekstensi Swift boleh pakai `+` di nama (`EditorSession+Brush`), jadi pola nama yang cuma mengizinkan alfanumerik akan melaporkan cakupan 0% yang palsu.
 - Pembanding jujur: port Windows independen lain (Revan67/Compositor-Windows; C#, Avalonia 12, SkiaSharp 3.119, .NET 10; fase 1 selesai dengan 114 test; kernel C upstream dipakai ulang tanpa perubahan) memang ada dan **sengaja tidak mengikuti app Mac** serta memakai format proyek sendiri. Artinya "100% paritas" belum dicapai siapa pun, dan sisa pekerjaannya mirip: fase 3-4 mereka adalah seleksi/brush/retouch/filters, remove-background ONNX, updater, dan installer. Cara hitung (bisa direproduksi): `awk '/^## Ringkasan/{exit} {print}' docs/PARITY.md > /tmp/body.md` lalu `grep -c "| done |" /tmp/body.md` dst. Semua baris wajib pakai empat status kanonik; `n/a-ish` dulu ada satu (FloatingPanel) dan sudah dirapikan ke `n/a` supaya hitungannya tertutup.
+- **Setelah WS19 (2026-09-25): 131 baris matriks**, dihitung dari 128 file Swift di app dir
+  (`c64183f`) plus 3 baris non-file yang sudah ada (Auto-update, LayersPanel, dan baris ini
+  tidak dihitung). 36 baris baru masuk sebagai `missing` kecuali `DocumentLimits.swift`
+  yang langsung `done`. Tally per status dihitung `grep -c`, bukan angka tangan.
 - Urut dependensi (workstream plan): WS2 blend engine → WS3 selection → WS4 adjustments → WS5 layer power → WS6 geometry → WS7 brush v2 → WS8 tools → WS9 filters → WS10 IO/UX → WS11 rendering perf → WS12 ML decision → WS13 release.
 - Catatan jujur: SubjectRemoval/ContentFill/GuidedMatte di Mac pakai Apple Vision ML. Paritas di Windows berarti ONNX Runtime + model terbuka; keputusan arsitektur di WS12, hasilnya di-update di matriks ini.
+
+## WS19 - Sinkronisasi upstream + limit dokumen - 2026-09-25
+
+- **Temuan:** snapshot yang dipakai seluruh audit sampai hari ini (`a19db90`) adalah 177 commit
+  di belakang `upstream/main` (`c64183f`). Bukan kesalahan status per fitur, tapi kesalahan
+  **target**: 36 file Swift / 8.899 LOC tidak pernah masuk daftar periksa.
+- Yang hilang itu area fitur, bukan detail kecil: PSD import/export (7 file, 1.945 LOC),
+  Camera RAW (6 file, 1.783 LOC), Type tool + editor inline (3 file, 873 LOC),
+  Layer Effects (4 file, 1.418 LOC), Object Selection (298), Guides + Rulers (435),
+  KeyboardShortcuts (319), NumericScrub (63), TrimSheet (68).
+- **Koreksi limit yang berdampak ke user:** upstream memisahkan dua ceiling yang di kode kita
+  tercampur jadi satu angka. `DocumentLimits.swift` bilang `maxSide = 30_000`,
+  `maxSurfacePixels = 200_000_000`, dan `documentPixelBudget = min(800_000_000, max(maxSurfacePixels, RAM/16))`.
+  Kita sebelumnya memakai 100 MP untuk keduanya, jadi canvas 100-200 MP yang **sah** di Mac
+  ditolak di sini. `ImageBudget` sekarang memakai semantik upstream; di .NET RAM dibaca dari
+  `GC.GetGCMemoryInfo().TotalAvailableMemoryBytes` (padanan portable yang juga menghormati limit container).
+- Pesan error ikut berubah karena upstream menyusunnya dari konstanta itu:
+  export "up to 200 megapixels and 30,000 pixels per side", import memakai angka budget dokumen.
+- 3 test di-update dari ekspektasi 100 MP ke turunan rumus; 3 test baru ditambah
+  (surface 14.142^2 lolos / 14.143^2 ditolak, budget dokumen menghitung pemakaian per layer,
+  budget mengikuti rumus RAM upstream). Semua diverifikasi 502 hijau.
+- **Repo/fork:** `adi805/Compositor-Windows` ternyata **bukan** fork dari upstream Mac
+  (parent-nya `Revan67/Compositor-Windows` pada awalnya, dan sekarang `fork=false`).
+  Yang benar-benar fork dari `robbietilton/Compositor` di akun itu: nol. Upstream di-set
+  sebagai remote `upstream` di working copy ini supaya `git fetch upstream` jadi cara rutin
+  mendeteksi drift.
 
 ## WS4 - Adjustments - 2026-09-21
 - Engine: LevelRange/LevelsSettings (+composite RGB∘channel, 3x256 LUT with interpolation), LevelsAuto (contrast/color/neutral via 0.1% tails + neutral gamma), 4x256 histogram (RGB = mean of channels, coverage-weighted), Curves (shape-preserving Hermite, per-channel composed with RGB), HueSaturation (7 Photoshop bands, per-degree response, multiplicative saturation, lightness pull, colorize), Exposure (sRGB decode/encode LUT), GradientMap (Rec.709 luma LUT), Invert
