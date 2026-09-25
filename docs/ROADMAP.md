@@ -200,3 +200,15 @@ Acceptance:
 - Yang dibutuhkan supaya baris itu jadi `done`: installer yang mengerjakan swap waktu app ditutup
   (bukan skrip manual), dan tanda tangan paket yang bisa diverifikasi (appcast bertanda tangan atau
   setaranya) supaya sumbernya dipercaya tanpa menyuruh user mengetik kalimat konfirmasi.
+
+## Codec gap TIFF dan HEIC (WS21) - 2026-09-25
+
+- Yang ditolak sekarang diukur, bukan ditebak: `CodecProbeTests` memanggil `SKCodec`/`SKImage` langsung
+  pada fixture nyata (Pillow, LIBTIFF 4.5.1, libheif) dengan kontrol PNG yang membuktikan harness-nya
+  hidup. Hasil: tidak ada decoder TIFF dan tidak ada decoder HEIF di SkiaSharp 2.88.9.
+- Keputusan: TIFF tetap opsi terbuka lewat dependency managed (satu-satunya kandidat yang terverifikasi
+  deskripsinya: BitMiracle.LibTiff.NET 2.4.660, 36,8 juta downloads; ImageSharp dan Magick.NET belum
+  diverifikasi kemampuannya). HEIC dinyatakan gap: butuh decoder HEVC eksternal yang tidak ada di stack
+  ini sama sekali, dan ImageMagick di box ini pun menolak HEVC dengan error yang sama untuk file kamera.
+- Belum diukur: win-x64. Yang dibutuhkan cuma satu job `windows-latest` di CI yang menjalankan
+  Compositor.App.Tests; angka WS21 sekarang adalah angka runner ubuntu.

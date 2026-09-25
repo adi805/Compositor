@@ -115,9 +115,13 @@ public static class ImageFormatPolicy
         new(ImageFormat.WebP, "WebP", ["webp"], true, false, true,
             "Readable by our codec; not an export target."),
         new(ImageFormat.Tiff, "TIFF", ["tif", "tiff"], false, false, true,
-            "Upstream imports TIFF. Ours needs a TIFF codec that is not in the shipped Skia build."),
+            "Upstream imports TIFF. Measured 2026-09-25: the shipped SkiaSharp 2.88.9 build returns no codec "
+            + "for real TIFF files (uncompressed and LZW both), and SKEncodedImageFormat has no Tiff member. "
+            + "Adding this means a managed TIFF dependency; see docs/PARITY.md WS21."),
         new(ImageFormat.Heif, "HEIC/HEIF", ["heic", "heif"], false, false, false,
-            "Upstream imports HEIC through ImageIO. On Windows this needs a licensed decoder; see the ML/native codec note."),
+            "Upstream imports HEIC through ImageIO. Measured 2026-09-25: no HEIF decoder in this build, "
+            + "against a self-generated file and a third-party camera file alike, and HEVC needs an external "
+            + "decoder that is not in this stack. Declared gap; see docs/PARITY.md WS21."),
     ];
 
     /// Containers we can read, in matrix order.

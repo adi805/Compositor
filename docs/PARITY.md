@@ -87,7 +87,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | ImageExporter.swift | 146 | partial | WS10: PNG + JPEG export, cap 30k/side + 100MP, DPI (pHYs / JFIF), matte untuk transparency. WS11: composit sekarang render lewat placement transform (posisi/skala/rotasi), layar dan export searah. Gap: flip flag masih di-bake (bukan dihormati), adjustment/folder masks belum |
 | ImageResizer.swift | 117 | done | WS6: ImageSizeCommand (transform scale + bilinear resample + caps), resolution di manifest |
 | CanvasResizer.swift | 72 | done | WS6: CanvasResizeCommand (anchor offsets, fill extension layer, non-destructive) |
-| ImageImporter.swift | 63 | partial | WS10: budget 100MP/30k per file (dihitung ulang per file ala upstream), EXIF orientation, RGBA8 straight-alpha, gagal pakai taksonomi yang sama. Gap: HEIC + TIFF butuh codec yang gak ada di Skia build ini; thumbnail 96px asset belum dibuat |
+| ImageImporter.swift | 63 | partial | WS10: budget 100MP/30k per file (dihitung ulang per file ala upstream), EXIF orientation, RGBA8 straight-alpha, gagal pakai taksonomi yang sama. Gap: HEIC + TIFF butuh codec yang gak ada di Skia build ini; thumbnail 96px asset belum dibuat. Diukur 2026-09-25 (WS21, `CodecProbeTests`): keduanya memang tidak punya decoder di build ini, bukan cuma ditolak policy |
 | ImageFileDrop.swift | 55 | partial | WS10: drop file ke canvas (pasteboard order, drop point jadi posisi), fallback ke image data in-memory buat screenshot/gambar dari browser (upstream salin ke file sementara), pesan gagal per-file. Gap: routing ke workspace/tab lain (ProjectWorkspace belum ada) |
 | PSD/PSDText.swift | 682 | missing | WS19: text layer di PSD |
 | PSD/PSDReader.swift | 543 | missing | WS19: PSD import |
@@ -359,3 +359,65 @@ kejadiannya bobot tidak bisa lagi di-commit, harus diunduh saat runtime dengan d
 - Status matriks: baris `Auto-update (Sparkle)` pindah dari `missing` ke `partial`. Bukan `done`
   karena installer yang menukar binary tanpa langkah manual, dan tanda tangan paket, belum ada.
   Tally setelah perubahan ini: done 15 · partial 52 · missing 60 · n/a 4 = 131 baris.
+
+## WS21 - Codec gap TIFF dan HEIC, diukur bukan diandaikan - 2026-09-25
+
+- **Kenapa task ini ada.** README dan matriks sudah menolak TIFF dan HEIC duluan, tapi alasannya
+  ditulis sebagai dugaan ("needs a licensed decoder"), dan satu-satunya test yang menjaga penolakan itu
+  (`SkiaCodecTests.ImportIsRefusedForContainersTheMatrixDoesNotClaim`) suapkan header karangan sendiri ke
+  `SkiaCodec.Decode`. Itu membuktikan **policy kita** menolak, bukan **codec-nya** tidak bisa. Dua hal yang
+  beda, dan upstream Mac menerima keduanya lewat ImageIO, jadi ini item paritas nyata.
+- **Metode.** Empat fixture 8x8, kiri merah / kanan hijau, tiap satunya ditulis alat yang bukan subjek
+  uji: Pillow 12.3.0 (TIFF uncompressed), LIBTIFF 4.5.1 lewat ImageMagick (TIFF LZW, terverifikasi
+  `file` menyebut `compression=LZW`), dan libheif yang dibundel pillow_heif 1.8.0 (HEIC 484 byte, frame
+  tersandi 64x64 dengan `clap` crop ke 8x8, persis kamera asli). PNG 8x8 dipakai sebagai kontrol. Yang
+  dipanggil langsung `SKCodec.Create` dan `SKImage.FromEncodedData`, melewati policy kita sepenuhnya.
+  Karena polanya gue gambar sendiri, hasil decode dicek terhadap gambarnya, bukan terhadap output mesin.
+- **Hasil terukur** (linux-x64, SkiaSharp 2.88.9, 2026-09-25):
+
+  | fixture | byte | `SKCodec.Create` | `SKImage.FromEncodedData` |
+  |---|---|---|---|
+  | PNG kontrol | 79 | ok, `Png`, 8x8 | ok, kiri `(255,0,0)` kanan `(0,255,0)` |
+  | TIFF uncompressed | 332 | **null** | **null** |
+  | TIFF LZW | 326 | **null** | **null** |
+  | HEIC (buatan sendiri) | 484 | **null** | **null** |
+  | HEIC kamera 1280x854 | 718.114 | **null** | **null** |
+
+  Kontrolnya hidup, jadi nol di baris lain adalah fakta tentang build-nya, bukan tentang harness-nya.
+  HEIC kedua (foto dari repo libheif, tidak di-commit karena hak atas foto orang itu bukan keputusan gue)
+  dimasukin lewat `tests/Compositor.App.Tests/bin/.../probe-fixtures/` dan hasilnya sama, jadi simpulannya
+  bukan artefak encoder yang gue pakai.
+- **Dua fixture bug yang ketemu di jalan, dan sekarang dikunci test.** Transkripsi base64 pertama untuk
+  TIFF uncompressed menghasilkan 311 byte, bukan 332: file terpotong, dan file terpotong juga balikin
+  codec null. Tanpa cek panjang, itu terbaca sebagai "TIFF tidak didukung" padahal buktinya rusak. Dan
+  `Pillow` diam-diam menulis TIFF **uncompressed** padahal diminta `compression='lzw'` (dua file keluaran
+  Pillow identik 332 byte); varian LZW akhirnya dibuat pakai ImageMagick. `EveryFixtureDecodesToTheLengthIt
+  Documents` menjaga keduanya.
+- **Bukti kedua untuk TIFF, lintas platform.** Enum `SKEncodedImageFormat` di assembly SkiaSharp 2.88.9
+  punya `Heif` tapi **tidak punya anggota `Tiff` sama sekali**. Itu fakta managed assembly yang sama di
+  semua platform, jadi untuk TIFF ada dua sumber independen; untuk HEIC satu measurement (linux-x64) plus
+  satu korelasi file ketiga.
+- **Keputusan TIFF: opsi (b), dependency, belum diambil.** Yang masuk akal dan terverifikasi ada:
+  `BitMiracle.LibTiff.NET` 2.4.660, 36.819.878 downloads, dideskripsikan sebagai port libtiff ke C# murni,
+  jadi tanpa native asset. Harganya bukan rupiah tapi cakupan: TIFF itu laut (multi-page, CMYK,
+  JPEG-in-TIFF, floating point), dan mendukung baseline RGB none/LZW/PackBits bukan berarti mendukung
+  "TIFF". `SixLabors.ImageSharp` 4.1.2 (314.553.246 downloads) dan `Magick.NET` 14.17.1 (60.928.595)
+  adalah kandidat yang **belum diverifikasi kemampuannya**: deskripsi ImageSharp di NuGet tidak menyebut
+  TIFF, dan ImageMagick di box ini sendiri gagal decode HEVC (`Unsupported codec`, terukur di bawah), jadi
+  "tambah Magick.NET" bukan jawaban otomatis. Side effect yang harus ikut diputuskan: matriks kita juga
+  `CanExport=false` untuk TIFF, dan menambah decoder tanpa encoder tidak membuat barisnya `done`.
+- **Keputusan HEIC: opsi (c), gap yang dideklarasikan jujur.** Bukan cuma tidak ada di Skia: butuh
+  decoder HEVC eksternal, dan tidak ada satu pun jalur di stack ini yang punya. Terukur: delegate HEIC
+  ImageMagick di box ini (libheif 1.17.6) menolak **dua-duanya**, file buatan gue dan file kamera, dengan
+  error yang sama. Artinya ini bukan gate yang bisa dibuka dengan menghapus satu baris policy; dan
+  ditambah pertanyaan lisensi HEVC, biayanya jauh di atas nilai satu format impor untuk pre-alpha. Baris
+  `ImageImporter.swift` tetap `partial`, README tetap menyebutnya, dan test pin absennya decoder yang
+  memaksa keputusan dibuka lagi kalau build Skia berubah.
+- **Yang belum diukur.** win-x64. CI cuma jalan di ubuntu, jadi angka di atas adalah runner CI, bukan
+  platform yang kita ship. Bukti enum di atas menutupi sebagian jarak itu tapi bukan semuanya; yang
+  dibutuhkan buat nutup penuh adalah satu job `windows-latest` yang menjalankan `Compositor.App.Tests`.
+  Ditulis di sini supaya tidak ada yang mengira "sudah diverifikasi di Windows".
+- **Tally tidak berubah oleh task ini:** tidak ada status yang berpindah (yang berubah cuma kualitas
+  alasannya), tetap done 15 · partial 52 · missing 60 · n/a 4 = 131 baris. 8 test baru di
+  `tests/Compositor.App.Tests/CodecProbeTests.cs`, dua cabang test opsional (direktori ada / tidak ada)
+  sama-sama lolos di lokal.
