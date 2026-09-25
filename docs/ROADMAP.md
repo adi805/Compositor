@@ -189,3 +189,14 @@ Acceptance:
 - Repo di-set `upstream` = `robbietilton/Compositor` supaya `git fetch upstream` jadi cara rutin ngecek drift, dan klaim fork di dokumen dikoreksi: yang benar-benar fork dari upstream Mac di akun ini **nol**.
 - Tests: 349 Core + 153 App = **502 hijau**, build 0 warning.
 - Urutan berikutnya: 36 baris baru itu mayoritas `missing` dan belum masuk plan. Yang paling murah dulu: Guides + Rulers (435 LOC, murni UI), KeyboardShortcuts (319), TrimSheet (68), NumericScrub (63). Yang mahal dan butuh keputusan: PSD (1.945 LOC) dan Camera RAW (1.783 LOC).
+
+## Status update (2026-09-25, task 17): auto-update
+
+- Help > "Check for Updates..." sekarang hidup: membandingkan versi build dengan rilis terbaru di
+  GitHub, memverifikasi SHA256 dan ukuran dari manifest yang dipublish release workflow, lalu
+  men-stage paket ke `update-staging/` bersama `apply-update.cmd`. Tidak ada pengecekan otomatis saat
+  launch dan tidak ada penggantian binary in-place; dua-duanya ditulis apa adanya sebagai `partial`
+  di PARITY, bukan disembunyikan di balik kata "auto-update".
+- Yang dibutuhkan supaya baris itu jadi `done`: installer yang mengerjakan swap waktu app ditutup
+  (bukan skrip manual), dan tanda tangan paket yang bisa diverifikasi (appcast bertanda tangan atau
+  setaranya) supaya sumbernya dipercaya tanpa menyuruh user mengetik kalimat konfirmasi.

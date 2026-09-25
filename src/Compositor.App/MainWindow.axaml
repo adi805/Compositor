@@ -69,6 +69,11 @@
         <MenuItem Header="_Crop..." Click="OnCropSheet" />
         <MenuItem Header="Crop to Se_lection" Click="OnCropToSelection" />
       </MenuItem>
+      <!-- Upstream keeps "Check for Updates…" next to About in the app menu; Help is where that belongs on
+           Windows. It is the only item here because there is no About box to share it with yet. -->
+      <MenuItem Header="_Help">
+        <MenuItem Header="Check for _Updates..." Click="OnCheckForUpdates" />
+      </MenuItem>
     </Menu>
     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,4,8,4">
       <ComboBox x:Name="ToolPicker" Width="130" SelectedIndex="0" ToolTip.Tip="Tool"
@@ -250,6 +255,29 @@
         <Border x:Name="StatusNote" Background="#E6B3261F" CornerRadius="6" Padding="10,6" MaxWidth="520"
                 HorizontalAlignment="Center" VerticalAlignment="Top" Margin="12" IsVisible="False">
           <TextBlock x:Name="StatusNoteText" Foreground="#FAFAFA" TextWrapping="Wrap" />
+        </Border>
+        <!-- Auto-update: the padanan Sparkle. This app has no dialog service, so the update sheet follows
+             the same idiom as the JPEG and filter sheets: an inline panel. The install button hands the
+             text box's content straight to the updater, which makes typing the phrase the gate rather
+             than a checkbox that could be pre-ticked. -->
+        <Border x:Name="UpdatePanel" Background="#E6202020" CornerRadius="8"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="12" Padding="14" Width="420" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Check for Updates" FontWeight="Bold" />
+            <TextBlock x:Name="UpdateMessage" TextWrapping="Wrap" Opacity="0.9" />
+            <TextBlock x:Name="UpdatePageUrl" TextWrapping="Wrap" FontSize="11" Opacity="0.6"
+                       IsVisible="False" />
+            <StackPanel x:Name="UpdateConfirmRow" Spacing="4" IsVisible="False">
+              <TextBlock Text="Type the words Install update below to let the updater write anything."
+                         FontSize="11" Opacity="0.7" />
+              <TextBox x:Name="UpdateConfirmBox" Watermark="Install update" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button x:Name="UpdateInstall" Content="Install" Click="OnUpdateInstall" IsVisible="False" />
+              <Button Content="Close" Click="OnUpdateClose" />
+            </StackPanel>
+          </StackPanel>
         </Border>
         <Border x:Name="JpegPanel" Background="#E6202020" CornerRadius="8"
                 HorizontalAlignment="Left" VerticalAlignment="Bottom"

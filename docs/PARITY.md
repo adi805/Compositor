@@ -125,8 +125,8 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | Upstream | Status | Catatan |
 |---|---|---|
 | ContentView (386) | partial | Kerangka jendela, menu dan host kanvas ada di `MainWindow.axaml`; chrome tab proyek dan thumbnail belum 1:1 (lihat baris ProjectTabs/CanvasThumbnail). |
-| CompositorApp (270) | partial | Entry app, menu command dan shortcut ada. "Check for Updates..." TIDAK ada, lihat baris Auto-update. |
-| Auto-update (Sparkle) | missing | Upstream: `CompositorApp.swift:84` (menu) + `CompositorApplicationDelegate.swift:11` (`SPUStandardUpdaterController`, start 1s setelah launch). Sparkle tidak ada di Windows; padanannya = cek GitHub Releases, unduh asset, ganti binary, relaunch. Belum masuk plan. |
+| CompositorApp (270) | partial | Entry app, menu command dan shortcut ada. "Check for Updates..." sudah ada per 2026-09-25 (menu Help), lihat baris Auto-update. |
+| Auto-update (Sparkle) | partial | Dilengkapi 2026-09-25: Help > "Check for Updates..." menanyakan rilis terbaru ke GitHub Releases API, membandingkan dengan informational version build (sumbernya `<Version>` di Directory.Build.props), membaca manifest SHA256SUMS yang dipublish release workflow, memverifikasi hash DAN ukuran paket yang diunduh, lalu men-stage-nya di `update-staging/` beserta `apply-update.cmd`. Versi dan parser diuji headless tanpa jaringan. Beda sadar dengan Sparkle: (1) tidak ada pengecekan latar belakang saat launch, karena kita tidak punya appcast bertanda tangan yang aman untuk dipercaya begitu saja, dan (2) penggantian binary terjadi lewat skrip stage, bukan in-place, karena `Compositor.App.exe` yang sedang berjalan tidak bisa menimpa dirinya sendiri. Konfirmasi berupa kalimat yang harus diketik ("Install update"), bukan checkbox, dan ditolak tanpa menulis apa pun kalau kalimatnya tidak persis. |
 | NativeLayerList (896) | partial | Layer list add/del/reorder/visibility; belum drag-reorder/grup/thumbnail |
 | HueSaturationSheet (193) | partial | WS4: 7 band + hue/sat/lightness + colorize; spectrum per-band + eyedropper belum |
 | ColorPickerSheet (185) | partial | Swatch sederhana; belum picker penuh |
@@ -330,3 +330,32 @@ kejadiannya bobot tidak bisa lagi di-commit, harus diunduh saat runtime dengan d
 (c) ukur biaya CPU: belum pernah di-time sama sekali, dan machine user bukan joyboy.
 
 - Tally sesudah WS12 ditulis: done 14 · partial 47 · missing 31 · n/a 3 = 95 baris (SubjectRemoval pindah dari missing ke partial karena jalurnya terbukti; GuidedMatte dan ContentFill tetap missing tapi tidak lagi dicap ML).
+
+## WS20 - Auto-update, padanan Sparkle - 2026-09-25
+
+- **Kontrak upstream:** `CompositorApp.swift:84` memasang `Button("Check for Updates…")` di
+  `CommandGroup(after: .appInfo)`, dan `CompositorApplicationDelegate.swift:11` punya
+  `SPUStandardUpdaterController` yang baru start satu detik setelah launch. Sparkle tidak ada di
+  Windows, jadi yang dipindah adalah perilaku yang dilihat user, bukan framework-nya.
+- Yang dibangun: `AppVersion` (bandingkan angka per komponen; prerelease kalah dari rilis versi yang
+  sama, dan `0.10.0 > 0.9.0` tidak bisa dikerjakan oleh compare string), `ReleaseManifest` (membaca
+  body `/releases/latest` dan file `SHA256SUMS` yang di-publish `release.yml`; aset aplikasi dipilih
+  lewat sufiks `-win-x64.zip` supaya arsip sumber tidak pernah dianggap aplikasi), `UpdateChecker`
+  (transportnya disuntik, jadi test tidak pernah membuka socket), dan `UpdateStager` (satu-satunya
+  yang boleh menulis ke disk).
+- **Tiga penolakan yang membuat fitur ini aman dipakai:** hash tidak cocok, ukuran tidak cocok
+  walaupun hash cocok (paket yang terpotong di tengah jalan bisa lolos pemeriksaan hash saja), dan
+  kalimat konfirmasi tidak persis sama. Semuanya terjadi sebelum satu byte pun ditulis, dan
+  test-nya membandingkan isi direktori install sebelum dan sesudah percobaan.
+- **Dua beda sadar dengan Sparkle, dicatat di sini supaya tidak keliru dibaca sebagai paritas
+  penuh:** tidak ada pengecekan otomatis saat launch (Sparkle punya appcast bertanda tangan yang
+  memang bisa dipercaya begitu saja, kita tidak), dan penggantian binary tidak in-place.
+  `Compositor.App.exe` yang sedang berjalan tidak bisa menimpa dirinya sendiri, jadi paket yang
+  sudah terverifikasi ditampung di `update-staging/` bersama `apply-update.cmd`. Menghapus folder itu
+  membatalkan segalanya, dan tidak ada satu pun file install yang tersentuh sebelum skripnya jalan.
+- Konfirmasinya kalimat yang harus diketik, bukan checkbox: menu mengirim isi text box apa adanya ke
+  updater, jadi tidak ada state "sudah dicentang" yang bisa kebawa oleh perubahan berikutnya.
+- 25 test Core + 19 test App baru: 457 + 199 = 656 hijau, 0 warning, smoke exit 0.
+- Status matriks: baris `Auto-update (Sparkle)` pindah dari `missing` ke `partial`. Bukan `done`
+  karena installer yang menukar binary tanpa langkah manual, dan tanda tangan paket, belum ada.
+  Tally setelah perubahan ini: done 15 · partial 52 · missing 60 · n/a 4 = 131 baris.
