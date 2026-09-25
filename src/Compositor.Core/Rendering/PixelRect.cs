@@ -31,6 +31,9 @@ public readonly record struct PixelRect(double X, double Y, double Width, double
         return new PixelRect(minX, minY, maxX - minX, maxY - minY);
     }
 
+    /// <summary>Moves the rectangle. Upstream spells this <c>offsetBy(dx:dy:)</c> on CGRect.</summary>
+    public PixelRect OffsetBy(double dx, double dy) => new(X + dx, Y + dy, Width, Height);
+
     public PixelRect Union(PixelRect other)
     {
         if (IsEmpty) return other;
