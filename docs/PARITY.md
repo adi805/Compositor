@@ -103,7 +103,7 @@ Kontrak kerja = plan tool "100% parity" (13 workstream). Matriks ini di-update t
 | Upstream file | LOC | Status | Catatan |
 |---|---|---|---|
 | EditorCanvas.swift | 1814 | partial | CanvasView: paint/zoom/pan; belum marquee/rulers/overlays |
-| TiledLayerRenderer.swift | 419 | partial | WS11 (perf): pemilihan tile diport ke Core (`TileGrid`: `Support(level)`, `Aligned`, `Interiors`, `PixelRect`) dengan 24 golden hitungan tangan, termasuk bukti bahwa dab 100 px di kanvas 4096 menyeleksi 4 dari 256 kotak. Gap: komposisi piece (region + margin, kompres ke level, clip hard-edge) belum disambung ke `CanvasView`, jadi render masih satu gambar penuh |
+| TiledLayerRenderer.swift | 419 | partial | WS11 (perf): pemilihan tile diport ke Core (`TileGrid`: `Support(level)`, `Aligned`, `Interiors`, `PixelRect`) dengan 24 golden hitungan tangan. WS22: sisa piece-nya sekarang ada, dan biayanya terukur `StrokeTiles` (alokasi tile sparse, key `y*columns+x`, dirty tile-local, clip di tepi layer) + `PieceLayout` (geometri `piece` upstream: margin, align ke `1<<level`, potong ke bounds, cap 64 juta pixel sebelum alokasi) + `PieceComposer` (App, crop lalu halve dengan konversi yang sama dengan `DownsampleCache`). Satu tile tersentuh di 4096x4096 = 9 piece dan 102.400 pixel di-resample, vs 16.777.216 untuk rebuild penuh (0,61 %). **Gap yang tersisa, dan ini yang menahan barisnya di partial:** tidak ada pemanggil produksi. Jalur kuas belum menerbitkan patch per tile dan `CanvasView` masih mengambil satu salinan reduced utuh lewat `DownsampleCache.For`, jadi belum ada penghematan di frame. Clip hard-edge per interior juga belum dipasang.
 | TransformOverlay.swift | 327 | partial | WS11: kotak transform + 8 handle + handle rotasi digambar di luar clip kanvas; hit-testing dan drag (move/resize/rotate) diport ke Core (`TransformHandles`, `TransformDrag`, `LayerTransform.Point/Contains`) dan disambung ke VM (`BeginTransformDrag`/`ContinueTransformDrag`/`EndTransformDrag`, satu undo step per drag, Shift = snap 15 derajat, Alt = anchor tengah). 42 golden hitungan tangan + 11 test end-to-end lewat VM termasuk bukti flatten ikut geser. Gap: marching-ants LOD buat seleksi kompleks, layout grid, user guides, overlay crop/gradient, dan pilihan lewat kotak grup/distort belum |
 | RasterSnapshot.swift | 176 | partial | Flatten kita |
 | LayerRenderer.swift | 173 | partial | |
@@ -421,3 +421,31 @@ kejadiannya bobot tidak bisa lagi di-commit, harus diunduh saat runtime dengan d
   alasannya), tetap done 15 · partial 52 · missing 60 · n/a 4 = 131 baris. 8 test baru di
   `tests/Compositor.App.Tests/CodecProbeTests.cs`, dua cabang test opsional (direktori ada / tidak ada)
   sama-sama lolos di lokal.
+
+
+## WS22 - Mesin lokalitas stroke (Task 19, sebagian) - 2026-09-25
+
+- Dipindah dari upstream: `BrushStroke.swift` (`tileSize`, `tiles`, `dirtyTiles`, key `y * columns + x`)
+  jadi `Compositor.Core/Rendering/StrokeTiles.cs`, dan separuh geometri `TiledLayerRenderer.piece` jadi
+  `PieceLayout` (`Plan` dan `Plans`). Core tetap bebas dependency: ia menghasilkan **rencana**, bukan bitmap.
+- Sisi App: `Compositor.App/Rendering/PieceComposer.cs` merealisasi rencana jadi `RasterSurface` per piece,
+  crop dari sumber lalu halving memakai konversi SKBitmap yang sama persis dengan `DownsampleCache`, supaya
+  pixel sebuah piece identik dengan pixel gambar utuh di level yang sama. Itu alasan upstream menyimpan
+  margin, dan itu pula yang bikin piece boleh ditumpangkan di atas gambar dasar tanpa bekas.
+- Piece sengaja tidak di-merge jadi satu surface besar. Merging akan mengalokasikan gambar reduced utuh dan
+  membatalkan seluruh tujuan pipeline ini. upstream juga menjatuhkan piece yang gagal dibangun
+  (`compactMap` atas `piece(...)`), jadi satu square yang ditolak guard berarti di-skip, bukan satu frame
+  dibatalkan.
+- Biaya dihitung, bukan diklaim. Untuk satu tile yang tersentuh di layer 4096x4096: 9 piece, 102.400 pixel
+  di-resample, dibanding 16.777.216 untuk rebuild penuh. Derivasinya ditulis di test (4 sudut 24x24,
+  4 tepi 272x24 atau 24x272, satu tengah 272x272), dan isi pixelnya dicek terhadap surface yang tiap
+  pixelnya fungsi deterministik dari koordinatnya sendiri. Isi test inilah yang menahan angka itu tetap
+  benar kalau seseorang mengubah margin atau step.
+- Yang **tidak** ikut terbangun, supaya tidak terbaca sebagai selesai: call-site produksi. Kuas masih
+  menggambar langsung ke surface penuh dan tidak menerbitkan patch per tile, dan `CanvasView` masih
+  mengambil satu salinan reduced utuh per layer. Jadi mesinnya sudah ada dan terukur, tapi frame render
+  belum memakai piece. Persis sisa langkahnya ada di baris `TiledLayerRenderer.swift` di atas dan di
+  `memory/2026-09-25.md`.
+- Tally tidak berubah: done 15 · partial 52 · missing 60 · n/a 4 = 131. Tidak ada status yang pindah
+  karena kapabilitasnya belum sampai ke pemakai.
+- 26 test baru (20 Core, 6 App): 477 Core + 213 App = 690 hijau, 0 warning, smoke exit 0.
