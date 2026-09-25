@@ -7,6 +7,7 @@ using Compositor.Core.Filters;
 using Compositor.Core.Commands;
 using Compositor.Core.Imaging;
 using Compositor.Core.Project;
+using Compositor.Core.Rendering;
 using Compositor.Core.Selection;
 using Compositor.Core.Tools;
 
@@ -538,6 +539,20 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     private byte[]? _strokeBefore;
     private SelectionClip? _strokeClip;
     private StrokeCoverage? _strokeCoverage;
+
+    /// <summary>
+    /// The squares of the layer a live stroke has actually painted, upstream's lazy per-tile
+    /// allocation. A renderer working off this rebuilds the pieces a stroke reaches instead of the
+    /// whole surface, which on a 4096x4096 layer is the difference between 102.400 resampled pixels
+    /// and 16.777.216. Reset at the start of every stroke and left standing after it so the frame
+    /// that follows the stroke can still see what changed.
+    /// </summary>
+    private StrokeTiles? _strokeTiles;
+
+    /// <summary>Tile rects the in-progress stroke painted, in surface pixels (empty before the first
+    /// stroke of the session).</summary>
+    public IReadOnlyList<PixelRect> StrokePatchRects() =>
+        _strokeTiles is { } tiles ? tiles.PatchRects() : Array.Empty<PixelRect>();
     private BrushSettings? _strokeSettings;
 
     /// <summary>Which tool the canvas pointer feeds (brush or a selection kind).</summary>
@@ -586,6 +601,21 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     /// Returns false when there is nothing to paint on (no active layer,
     /// locked layer) or a stroke is already in progress.
     /// </summary>
+    /// <summary>
+    /// Marks the tile under a dab as painted. The rect is the tip's own footprint, so a dab near a
+    /// tile edge reaches two tiles exactly as upstream's allocation does, and no more.
+    /// </summary>
+    private void TouchStrokeTile(float docX, float docY)
+    {
+        if (_strokeTiles is null || _strokeSettings is null)
+        {
+            return;
+        }
+
+        var half = _strokeSettings.Diameter / 2f;
+        _strokeTiles.Touch(new PixelRect(docX - half, docY - half, _strokeSettings.Diameter, _strokeSettings.Diameter));
+    }
+
     public bool BeginStroke(float docX, float docY)
     {
         if (IsStrokeActive)
@@ -607,6 +637,8 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         _strokeCoverage = new StrokeCoverage(_strokeSurface.Width, _strokeSurface.Height, _strokeSettings, _strokeClip);
         _strokeCoverage.WalkTo(docX, docY); // first dab lands immediately (upstream walk)
         _strokeCoverage.PaintRegion(_strokeSurface, _strokeBefore);
+        _strokeTiles = new StrokeTiles(_strokeSurface.Width, _strokeSurface.Height);
+        TouchStrokeTile(docX, docY);
         IsStrokeActive = true;
         return true;
     }
@@ -627,6 +659,7 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         _strokePath.Add((docX, docY));
         _strokeCoverage.WalkTo(docX, docY);
         _strokeCoverage.PaintRegion(_strokeSurface, _strokeBefore);
+        TouchStrokeTile(docX, docY);
     }
 
     /// <summary>
